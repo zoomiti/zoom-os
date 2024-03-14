@@ -127,14 +127,14 @@ impl fmt::Write for Writer {
 }
 
 #[macro_export]
-macro_rules! print {
+macro_rules! vga_print {
     ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
 }
 
 #[macro_export]
-macro_rules! println {
+macro_rules! vga_println {
     () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::vga_print!("{}\n", format_args!($($arg)*)));
 }
 
 #[doc(hidden)]
