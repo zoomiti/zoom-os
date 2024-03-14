@@ -67,8 +67,6 @@ extern "x86-interrupt" fn double_fault_hander(
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    #[cfg(debug_assertions)]
-    vga_print!(".");
     notify_end_of_interrupt();
 }
 

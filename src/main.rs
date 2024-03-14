@@ -6,7 +6,13 @@
 
 use core::panic::PanicInfo;
 
-use zoom_os::{hlt_loop, println, vga_println};
+use bootloader::{entry_point, BootInfo};
+use x86_64::{structures::paging::Translate, VirtAddr};
+use zoom_os::{
+    hlt_loop,
+    memory::{self, BootInfoFrameAllocator},
+    println, vga_println,
+};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -14,9 +20,14 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+entry_point!(kernel_main);
+
+fn kernel_main(boot_info: &'static BootInfo) -> ! {
     zoom_os::init();
+
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
     #[cfg(test)]
     test_main();
