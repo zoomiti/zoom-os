@@ -8,13 +8,14 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 
-use alloc::boxed::Box;
 use bootloader::{entry_point, BootInfo};
 use x86_64::VirtAddr;
 use zoom_os::{
     allocator, hlt_loop,
     memory::{self, BootInfoFrameAllocator},
-    println, vga_println,
+    println,
+    task::executor::Executor,
+    vga_println,
 };
 
 #[panic_handler]
@@ -34,12 +35,15 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
-    let x = Box::new(41);
+    let mut executor = Executor::new();
+    executor.spawn(async {
+        vga_println!("Asynchronously executed");
+    });
 
     #[cfg(test)]
     test_main();
 
     vga_println!("Hello World{}", "!");
 
-    hlt_loop()
+    executor.run()
 }

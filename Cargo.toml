@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bootloader = { version="0.9", features = ["map_physical_memory"] }
+crossbeam-queue = { version = "0.3.11", default-features = false, features = ["alloc", "nightly"] }
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 linked_list_allocator = { version = "0.10.5", features = ["use_spin_nightly"] }
 pc-keyboard = "0.7.0"
