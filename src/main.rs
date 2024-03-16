@@ -11,7 +11,8 @@ use core::panic::PanicInfo;
 use bootloader::{entry_point, BootInfo};
 use x86_64::VirtAddr;
 use zoom_os::{
-    allocator, hlt_loop,
+    allocator,
+    keyboard::print_keypresses,
     memory::{self, BootInfoFrameAllocator},
     println,
     task::executor::Executor,
@@ -36,6 +37,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
     let mut executor = Executor::new();
+    executor.spawn(print_keypresses());
     executor.spawn(async {
         vga_println!("Asynchronously executed");
     });

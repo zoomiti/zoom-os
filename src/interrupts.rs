@@ -1,4 +1,4 @@
-use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+use pc_keyboard::{layouts, HandleControl, Keyboard, ScancodeSet1};
 use pic8259::ChainedPics;
 use spin::Mutex;
 use x86_64::{
@@ -6,7 +6,7 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-use crate::{gdt, vga_print, vga_println};
+use crate::{gdt, keyboard::add_scancode, vga_println};
 
 use lazy_static::lazy_static;
 
@@ -80,17 +80,20 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
             ));
     }
 
-    let mut keyboard = KEYBOARD.lock();
+    //let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
 
     let scancode: u8 = unsafe { port.read() };
-    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-        if let Some(key) = keyboard.process_keyevent(key_event) {
-            match key {
-                DecodedKey::Unicode(character) => vga_print!("{}", character),
-                DecodedKey::RawKey(key) => vga_print!("{:?}", key),
-            }
-        }
-    }
+    add_scancode(scancode);
+
+    //if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+    //    if let Some(key) = keyboard.process_keyevent(key_event) {
+    //        match key {
+    //            DecodedKey::Unicode(character) => vga_print!("{}", character),
+    //            DecodedKey::RawKey(key) => vga_print!("{:?}", key),
+    //        }
+    //    }
+    //}
+
     notify_end_of_interrupt();
 }
