@@ -4,6 +4,8 @@ use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use crossbeam_queue::ArrayQueue;
 use x86_64::instructions::interrupts;
 
+use crate::println;
+
 use super::{Task, TaskId};
 
 pub struct Executor {
@@ -30,7 +32,7 @@ impl Executor {
         self.task_queue.push(task_id).expect("queue full");
     }
 
-    fn run_read_tasks(&mut self) {
+    fn run_ready_tasks(&mut self) {
         let Self {
             task_queue,
             tasks,
@@ -39,6 +41,10 @@ impl Executor {
 
         while let Some(task_id) = task_queue.pop() {
             let Some(task) = tasks.get_mut(&task_id) else {
+                println!(
+                    "DEBUG: Task id: {} was woken up more than necessary",
+                    task_id.0
+                );
                 continue;
             };
 
@@ -59,7 +65,7 @@ impl Executor {
 
     pub fn run(&mut self) -> ! {
         loop {
-            self.run_read_tasks();
+            self.run_ready_tasks();
             self.sleep_if_idle();
         }
     }
