@@ -8,6 +8,7 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 
+use alloc::sync::Arc;
 use bootloader::{entry_point, BootInfo};
 use x86_64::VirtAddr;
 use zoom_os::{
@@ -16,7 +17,8 @@ use zoom_os::{
     memory::{self, BootInfoFrameAllocator},
     println,
     task::executor::Executor,
-    vga_println,
+    util::r#async::{mutex::Mutex, yield_now},
+    vga_print, vga_println,
 };
 
 #[panic_handler]
@@ -40,6 +42,36 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     executor.spawn(print_keypresses());
     executor.spawn(async {
         vga_println!("Asynchronously executed");
+    });
+
+    let locked = Mutex::new(());
+    let locked1 = Arc::new(locked);
+    let locked2 = Arc::clone(&locked1);
+
+    executor.spawn(async move {
+        loop {
+            {
+                let _guard = locked1.lock().await;
+                vga_print!(".");
+            }
+            yield_now().await;
+            for _ in 0..100000 {
+                let _ = 10 + 10;
+            }
+        }
+    });
+
+    executor.spawn(async move {
+        loop {
+            {
+                let _guard = locked2.lock().await;
+                vga_print!("!");
+            }
+            yield_now().await;
+            for _ in 0..100000 {
+                let _ = 10 + 10;
+            }
+        }
     });
 
     #[cfg(test)]

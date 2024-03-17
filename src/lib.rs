@@ -15,6 +15,7 @@ pub mod keyboard;
 pub mod memory;
 pub mod serial;
 pub mod task;
+pub mod util;
 pub mod vga_buffer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
