@@ -10,11 +10,9 @@ use core::panic::PanicInfo;
 
 use alloc::sync::Arc;
 use bootloader::{entry_point, BootInfo};
-use x86_64::VirtAddr;
+use tracing::debug;
 use zoom_os::{
-    allocator,
     keyboard::print_keypresses,
-    memory::{self, BootInfoFrameAllocator},
     println,
     task::executor::Executor,
     util::r#async::{mutex::Mutex, yield_now},
@@ -30,23 +28,19 @@ fn panic(info: &PanicInfo) -> ! {
 entry_point!(kernel_main);
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
-    zoom_os::init();
-
-    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
-
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+    zoom_os::init(boot_info);
 
     let mut executor = Executor::new();
     executor.spawn(print_keypresses());
     executor.spawn(async {
         vga_println!("Asynchronously executed");
+        debug!("The tracer is setup");
     });
 
     let locked = Mutex::new(());
     let locked1 = Arc::new(locked);
     let locked2 = Arc::clone(&locked1);
+    debug!(?locked1, ?locked2, "Setting up the async mutex demo");
 
     executor.spawn(async move {
         loop {

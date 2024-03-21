@@ -2,9 +2,9 @@ use core::task::{Context, Poll, Waker};
 
 use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use crossbeam_queue::ArrayQueue;
+use tracing::debug;
 use x86_64::instructions::interrupts;
 
-use crate::println;
 
 use super::{Task, TaskId};
 
@@ -41,10 +41,7 @@ impl Executor {
 
         while let Some(task_id) = task_queue.pop() {
             let Some(task) = tasks.get_mut(&task_id) else {
-                println!(
-                    "DEBUG: Task id: {} was woken up more than necessary",
-                    task_id.0
-                );
+                debug!(task_id = task_id.0, "Task was woken up more than necessary");
                 continue;
             };
 

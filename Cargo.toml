@@ -14,6 +14,7 @@ lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 pc-keyboard = "0.7.0"
 pic8259 = "0.11.0"
 spin = "0.9.8"
+tracing = { version = "0.1.40", default-features = false, features = ["attributes"] }
 uart_16550 = { version = "0.3.0", features = ["nightly"] }
 volatile = "0.2.6"
 x86_64 = "0.15.0"
