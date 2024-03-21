@@ -1,20 +1,23 @@
 use core::{
     cell::UnsafeCell,
+    fmt::Debug,
     ops::{Deref, DerefMut},
     pin::Pin,
     sync::atomic::{AtomicBool, Ordering},
     task::{Context, Poll},
 };
 
+use alloc::fmt;
 use futures::Future;
 
 use super::waker_list::{WakerList, WakerListHandle};
 
-#[derive(Debug, Default)]
-pub struct Mutex<T> {
-    inner: UnsafeCell<T>,
+#[derive(Default)]
+pub struct Mutex<T: ?Sized> {
     locked: AtomicBool,
     wakeup_list: WakerList,
+    // HAS TO GO AT THE END
+    inner: UnsafeCell<T>,
 }
 
 unsafe impl<T> Sync for Mutex<T> {}
@@ -28,7 +31,8 @@ impl<T> Mutex<T> {
             wakeup_list: Default::default(),
         }
     }
-
+}
+impl<T: ?Sized> Mutex<T> {
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
         let locked = self.locked.load(Ordering::Acquire);
         if locked {
@@ -60,7 +64,17 @@ impl<T> Mutex<T> {
     }
 }
 
-#[derive(Debug)]
+impl<T: ?Sized + Debug> Debug for Mutex<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut d = f.debug_struct("Mutex");
+        match self.try_lock() {
+            Some(guard) => d.field("data", &&*guard),
+            None => d.field("data", &format_args!("<locked>")),
+        };
+        d.finish_non_exhaustive()
+    }
+}
+
 pub struct MutexGuard<'t, T: ?Sized> {
     inner: &'t mut T,
     locked: &'t AtomicBool,
@@ -70,7 +84,15 @@ pub struct MutexGuard<'t, T: ?Sized> {
 unsafe impl<T: ?Sized + Send> Send for MutexGuard<'_, T> {}
 unsafe impl<T: Sync> Sync for MutexGuard<'_, T> {}
 
-impl<T> Deref for MutexGuard<'_, T> {
+impl<T: ?Sized + Debug> Debug for MutexGuard<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MutexGuard")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<T: ?Sized> Deref for MutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -78,7 +100,7 @@ impl<T> Deref for MutexGuard<'_, T> {
     }
 }
 
-impl<T> DerefMut for MutexGuard<'_, T> {
+impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner
     }

@@ -1,6 +1,6 @@
 use core::task::Poll;
 
-use futures::{task::AtomicWaker, Future};
+use futures::{Future};
 
 pub mod mutex;
 /// Implements a waker for waking multiple tasks
