@@ -22,9 +22,9 @@ checksum = "ed570934406eb16438a4e976b1b4500774099c13b8cb96eec99f620f05090ddf"
 
 [[package]]
 name = "bootloader"
-version = "0.9.28"
+version = "0.9.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa1b8265c3a76185da6a3c43a86ce4fc669663b92e7d044fb62840a6147b491b"
+checksum = "ca7c184781ceb5660872f833fc6bd64ec9ae2500f8c65354705af541e4c28f7f"
 
 [[package]]
 name = "crossbeam-queue"

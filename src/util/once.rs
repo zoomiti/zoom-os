@@ -1,22 +1,21 @@
 use core::{
     borrow::Borrow,
     cell::UnsafeCell,
-    fmt::{self, Display},
+    fmt,
     mem::{ManuallyDrop, MaybeUninit},
     ops::Deref,
     ptr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicU8, Ordering},
 };
 
-use alloc::fmt;
-
-use super::r#async::mutex::Mutex;
-
 pub struct OnceLock<T> {
-    state: AtomicBool,
     inner: UnsafeCell<MaybeUninit<T>>,
-    mutex: Mutex<()>,
+    status: AtomicU8,
 }
+
+const UNINIT: u8 = 0;
+const RUNNING: u8 = 1;
+const INIT: u8 = 2;
 
 unsafe impl<T> Send for OnceLock<T> where T: Send {}
 unsafe impl<T> Sync for OnceLock<T> where T: Send + Sync {}
@@ -32,32 +31,48 @@ pub enum TryInitError {
 }
 
 impl<T> OnceLock<T> {
-    pub const fn uninit() -> Self {
+    pub const fn new() -> Self {
         Self {
-            state: AtomicBool::new(false),
             inner: UnsafeCell::new(MaybeUninit::uninit()),
-            mutex: Mutex::new(()),
+            status: AtomicU8::new(UNINIT),
         }
     }
 
+    pub const fn with_value(val: T) -> Self {
+        Self {
+            inner: UnsafeCell::new(MaybeUninit::new(val)),
+            status: AtomicU8::new(INIT),
+        }
+    }
+
+    #[inline(always)]
     pub fn is_init(&self) -> bool {
-        self.state.load(Ordering::Acquire)
+        self.status.load(Ordering::Acquire) == INIT
+    }
+
+    pub fn get(&self) -> Option<&T> {
+        if self.is_init() {
+            Some(unsafe { self.get_unchecked() })
+        } else {
+            None
+        }
     }
 
     pub fn try_get(&self) -> Result<&T, TryGetError> {
-        match self.state.load(Ordering::Acquire) {
+        match self.is_init() {
             true => Ok(unsafe { self.get_unchecked() }),
             false => Err(TryGetError::Uninitialized),
         }
     }
 
     pub fn try_init_once(&self, func: impl FnOnce() -> T) -> Result<(), TryInitError> {
-        match self.state.load(Ordering::Acquire) {
+        match self.is_init() {
             true => Err(TryInitError::AlreadyInitialized),
             false => {
                 let mut func = Some(func);
-                self.state.store(true, Ordering::Release);
-                self.try_init_inner(&mut || func.take().unwrap()());
+                // # Safety
+                // the inner function is only called once
+                self.try_init_inner(&mut || unsafe { func.take().unwrap_unchecked() }());
                 Ok(())
             }
         }
@@ -65,19 +80,35 @@ impl<T> OnceLock<T> {
 
     #[inline(never)]
     #[cold]
-    fn try_init_inner(&self, func: &mut dyn FnMut() -> T) -> &T {
-        let guard = self.mutex.spin_lock();
-        unsafe {
-            let inner = &mut *self.inner.get();
-            inner.as_mut_ptr().write(func());
+    fn try_init_inner(&self, func: &mut dyn FnMut() -> T) {
+        loop {
+            let exchange = self.status.compare_exchange_weak(
+                UNINIT,
+                RUNNING,
+                Ordering::Acquire,
+                Ordering::Acquire,
+            );
+            match exchange {
+                Ok(_) => {
+                    unsafe {
+                        let inner = &mut *self.inner.get();
+                        inner.as_mut_ptr().write(func());
+                    }
+                    self.status.store(INIT, Ordering::Release);
+                    return;
+                }
+                Err(INIT) => return,
+                Err(RUNNING) => core::hint::spin_loop(),
+                Err(UNINIT) => (),
+                Err(_) => debug_assert!(false),
+            }
         }
-        drop(guard);
-        unsafe { self.get_unchecked() }
     }
 
     /// # Safety
     /// Only safe once initialized
     pub unsafe fn get_unchecked(&self) -> &T {
+        debug_assert!(self.is_init());
         let inner = &*self.inner.get();
         &*inner.as_ptr()
     }
@@ -87,10 +118,20 @@ impl<T> OnceLock<T> {
             Ok(res) => res,
             Err(_) => {
                 let mut func = Some(func);
-                self.state.store(true, Ordering::Release);
-                self.try_init_inner(&mut || func.take().unwrap()())
+                // # Safety
+                // the inner function is only called once
+                self.try_init_inner(&mut || unsafe { func.take().unwrap_unchecked() }());
+                // # Safety
+                // we just init
+                unsafe { self.get_unchecked() }
             }
         }
+    }
+}
+
+impl<T> Default for OnceLock<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -111,7 +152,7 @@ impl<T, F> Lazy<T, F> {
     #[inline]
     pub const fn new(init: F) -> Self {
         Self {
-            cell: OnceLock::uninit(),
+            cell: OnceLock::new(),
             init: ManuallyDrop::new(init),
         }
     }
@@ -174,5 +215,40 @@ impl<T: fmt::Debug, F> fmt::Debug for Lazy<T, F> {
 impl<T: fmt::Display, F: FnOnce() -> T> fmt::Display for Lazy<T, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(Self::get_or_init(self), f)
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::{Lazy, OnceLock};
+
+    #[test_case]
+    fn get_init_once() {
+        let once = OnceLock::new();
+        assert_eq!(once.get(), None);
+        let res = once.try_init_once(|| 4);
+        assert!(res.is_ok());
+        assert_eq!(once.get(), Some(&4));
+        let res = once.try_init_once(|| 5);
+        assert!(res.is_err());
+        assert_eq!(once.get(), Some(&4));
+    }
+
+    #[test_case]
+    fn with_value() {
+        let once = OnceLock::with_value(5);
+        assert_eq!(once.get(), Some(&5));
+        let res = once.try_init_once(|| 4);
+        assert!(res.is_err());
+        assert_eq!(once.get(), Some(&5));
+    }
+
+    #[test_case]
+    fn test_lazy() {
+        let lazy = Lazy::new(|| 6);
+        assert!(!lazy.is_init());
+        assert_eq!(*lazy, 6);
+        assert!(lazy.is_init());
     }
 }

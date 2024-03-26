@@ -32,7 +32,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     spawn(print_keypresses());
     spawn(async {
         vga_println!("Asynchronously executed");
-        debug!("The tracer is setup");
+        debug!("The tracer should be setup by now");
     });
 
     let locked = Mutex::new(());

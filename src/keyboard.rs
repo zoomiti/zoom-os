@@ -9,7 +9,7 @@ use futures::{task::AtomicWaker, Stream, StreamExt};
 use pc_keyboard::{layouts, Keyboard, ScancodeSet1};
 use tracing::warn;
 
-static SCANCODE_QUEUE: OnceLock<ArrayQueue<u8>> = OnceLock::uninit();
+static SCANCODE_QUEUE: OnceLock<ArrayQueue<u8>> = OnceLock::new();
 static WAKER: AtomicWaker = AtomicWaker::new();
 
 pub(crate) fn add_scancode(scancode: u8) {

@@ -68,6 +68,7 @@ impl<T: ?Sized> Mutex<T> {
             if let Some(lock) = self.try_lock() {
                 return lock;
             }
+            core::hint::spin_loop();
         }
     }
 }
