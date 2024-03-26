@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 use core::fmt;
-use lazy_static::lazy_static;
 use volatile::Volatile;
 use x86_64::instructions::interrupts;
 
-use crate::util::r#async::mutex::Mutex;
+use crate::util::{once::Lazy, r#async::mutex::Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -52,13 +51,13 @@ struct Buffer {
     chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
-lazy_static! {
-    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
+pub static WRITER: Lazy<Mutex<Writer>> = Lazy::new(|| {
+    Mutex::new(Writer {
         column_position: 0,
         color_code: ColorCode::new(Color::Yellow, Color::Black),
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-    });
-}
+    })
+});
 
 pub struct Writer {
     column_position: usize,

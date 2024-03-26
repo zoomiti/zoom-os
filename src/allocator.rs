@@ -1,3 +1,4 @@
+//use linked_list_allocator::LockedHeap;
 use x86_64::{
     structures::paging::{
         mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
@@ -7,12 +8,14 @@ use x86_64::{
 
 use crate::util::r#async::mutex::Mutex;
 
-use self::linked_list::LinkedListAllocator;
+use self::block::FixedSizeBlockAllocator;
 
-pub mod linked_list;
+mod block;
+mod linked_list;
 
 #[global_allocator]
-static ALLOCATOR: Mutex<LinkedListAllocator> = Mutex::new(LinkedListAllocator::new());
+//static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static ALLOCATOR: Mutex<FixedSizeBlockAllocator> = Mutex::new(FixedSizeBlockAllocator::new());
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024;

@@ -4,9 +4,8 @@
 
 use core::panic::PanicInfo;
 
-use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use zoom_os::{exit_qemu, hlt_loop, print, println};
+use zoom_os::{exit_qemu, hlt_loop, print, println, util::once::Lazy};
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -27,18 +26,16 @@ fn stack_overflow() {
     volatile::Volatile::new(0).read(); // Prevent tail recursion
 }
 
-lazy_static! {
-    static ref TEST_IDT: InterruptDescriptorTable = {
-        let mut idt = InterruptDescriptorTable::new();
-        unsafe {
-            idt.double_fault
-                .set_handler_fn(test_double_fault_handler)
-                .set_stack_index(zoom_os::gdt::DOUBLE_FAULT_IST_INDEX);
-        }
+static TEST_IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
+    let mut idt = InterruptDescriptorTable::new();
+    unsafe {
+        idt.double_fault
+            .set_handler_fn(test_double_fault_handler)
+            .set_stack_index(zoom_os::gdt::DOUBLE_FAULT_IST_INDEX);
+    }
 
-        idt
-    };
-}
+    idt
+});
 
 fn init_test_init() {
     TEST_IDT.load();

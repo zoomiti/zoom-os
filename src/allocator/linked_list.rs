@@ -1,4 +1,7 @@
+//! TODO: Add coallescing so that this doesn't run out of memory eventually
 use core::{alloc::GlobalAlloc, mem, ptr};
+
+use tracing::{error, trace};
 
 use crate::util::r#async::mutex::Mutex;
 
@@ -88,6 +91,7 @@ impl Default for LinkedListAllocator {
 unsafe impl GlobalAlloc for Mutex<LinkedListAllocator> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         let (size, align) = LinkedListAllocator::size_align(layout);
+        trace!(size, align, "Alloc");
         let mut allocator = self.spin_lock();
 
         if let Some((region, alloc_start)) = allocator.find_region(size, align) {
@@ -98,12 +102,14 @@ unsafe impl GlobalAlloc for Mutex<LinkedListAllocator> {
             }
             alloc_start as *mut u8
         } else {
+            error!("Could not find memory to allocate");
             ptr::null_mut()
         }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
         let (size, _) = LinkedListAllocator::size_align(layout);
+        trace!(size, "dealloc");
         self.spin_lock().add_free_region(ptr as usize, size)
     }
 }
