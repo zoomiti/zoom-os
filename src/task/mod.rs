@@ -7,9 +7,12 @@ use core::{
 
 use alloc::boxed::Box;
 
-pub mod executor;
+mod executor;
+pub use executor::run;
+pub use executor::spawn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
 struct TaskId(u64);
 
 impl TaskId {
@@ -21,11 +24,11 @@ impl TaskId {
 
 pub struct Task {
     id: TaskId,
-    future: Pin<Box<dyn Future<Output = ()>>>,
+    future: Pin<Box<dyn Future<Output = ()> + Send + Sync>>,
 }
 
 impl Task {
-    pub fn new(future: impl Future<Output = ()> + 'static) -> Self {
+    pub fn new(future: impl Future<Output = ()> + 'static + Send + Sync) -> Self {
         Self {
             id: TaskId::new(),
             future: Box::pin(future),
@@ -37,7 +40,7 @@ impl Task {
     }
 }
 
-impl<F: Future<Output = ()> + 'static> From<F> for Task {
+impl<F: Future<Output = ()> + 'static + Send + Sync> From<F> for Task {
     fn from(value: F) -> Self {
         Self::new(value)
     }

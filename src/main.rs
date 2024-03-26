@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, time::Duration};
 
 use alloc::sync::Arc;
 use bootloader::{entry_point, BootInfo};
@@ -14,8 +14,8 @@ use tracing::debug;
 use zoom_os::{
     keyboard::print_keypresses,
     println,
-    task::executor::Executor,
-    util::r#async::{mutex::Mutex, yield_now},
+    task::{run, spawn},
+    util::r#async::{mutex::Mutex, sleep},
     vga_print, vga_println,
 };
 
@@ -30,9 +30,8 @@ entry_point!(kernel_main);
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     zoom_os::init(boot_info);
 
-    let mut executor = Executor::new();
-    executor.spawn(print_keypresses());
-    executor.spawn(async {
+    spawn(print_keypresses());
+    spawn(async {
         vga_println!("Asynchronously executed");
         debug!("The tracer is setup");
     });
@@ -42,29 +41,23 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     let locked2 = Arc::clone(&locked1);
     debug!(?locked1, ?locked2, "Setting up the async mutex demo");
 
-    executor.spawn(async move {
+    spawn(async move {
         loop {
             {
                 let _guard = locked1.lock().await;
                 vga_print!(".");
             }
-            yield_now().await;
-            for _ in 0..100000 {
-                let _ = 10 + 10;
-            }
+            sleep(Duration::from_millis(150)).await;
         }
     });
 
-    executor.spawn(async move {
+    spawn(async move {
         loop {
             {
                 let _guard = locked2.lock().await;
                 vga_print!("!");
             }
-            yield_now().await;
-            for _ in 0..100000 {
-                let _ = 10 + 10;
-            }
+            sleep(Duration::from_millis(450)).await;
         }
     });
 
@@ -73,5 +66,5 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     vga_println!("Hello World{}", "!");
 
-    executor.run()
+    run()
 }

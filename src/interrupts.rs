@@ -1,3 +1,7 @@
+use core::{
+    sync::atomic::{Ordering},
+};
+
 use pc_keyboard::{layouts, HandleControl, Keyboard, ScancodeSet1};
 use pic8259::ChainedPics;
 use spin::Mutex;
@@ -6,7 +10,12 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-use crate::{gdt, keyboard::add_scancode, vga_println};
+use crate::{
+    gdt,
+    keyboard::add_scancode,
+    util::r#async::sleep_future::{wake_sleep, MONOTONIC_TIME},
+    vga_println,
+};
 
 use lazy_static::lazy_static;
 
@@ -16,11 +25,8 @@ pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 pub static PICS: spin::Mutex<ChainedPics> =
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
-fn notify_end_of_interrupt() {
-    unsafe {
-        PICS.lock()
-            .notify_end_of_interrupt(InterruptIndex::Timer.as_u8())
-    }
+fn notify_end_of_interrupt(index: InterruptIndex) {
+    unsafe { PICS.lock().notify_end_of_interrupt(index.as_u8()) }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,7 +73,9 @@ extern "x86-interrupt" fn double_fault_hander(
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    notify_end_of_interrupt();
+    let curr_time = MONOTONIC_TIME.fetch_add(1, Ordering::Acquire);
+    wake_sleep(curr_time);
+    notify_end_of_interrupt(InterruptIndex::Timer);
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
@@ -95,5 +103,5 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     //    }
     //}
 
-    notify_end_of_interrupt();
+    notify_end_of_interrupt(InterruptIndex::Keyboard);
 }

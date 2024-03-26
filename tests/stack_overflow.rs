@@ -6,7 +6,7 @@ use core::panic::PanicInfo;
 
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use zoom_os::{exit_qemu, print, println};
+use zoom_os::{exit_qemu, hlt_loop, print, println};
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -50,7 +50,7 @@ extern "x86-interrupt" fn test_double_fault_handler(
 ) -> ! {
     println!("[ok]");
     exit_qemu(zoom_os::QemuExitCode::Success);
-    loop {}
+    hlt_loop()
 }
 
 #[panic_handler]

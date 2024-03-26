@@ -20,15 +20,15 @@ pub struct Mutex<T: ?Sized> {
     inner: UnsafeCell<T>,
 }
 
-unsafe impl<T> Sync for Mutex<T> {}
-unsafe impl<T> Send for Mutex<T> {}
+unsafe impl<T: ?Sized> Sync for Mutex<T> {}
+unsafe impl<T: ?Sized> Send for Mutex<T> {}
 
 impl<T> Mutex<T> {
-    pub fn new(inner: T) -> Self {
+    pub const fn new(inner: T) -> Self {
         Self {
             inner: UnsafeCell::new(inner),
             locked: AtomicBool::new(false),
-            wakeup_list: Default::default(),
+            wakeup_list: WakerList::new(),
         }
     }
 }
@@ -59,6 +59,14 @@ impl<T: ?Sized> Mutex<T> {
             .await;
             if let Some(guard) = self.try_lock() {
                 return guard;
+            }
+        }
+    }
+
+    pub fn spin_lock(&self) -> MutexGuard<'_, T> {
+        loop {
+            if let Some(lock) = self.try_lock() {
+                return lock;
             }
         }
     }

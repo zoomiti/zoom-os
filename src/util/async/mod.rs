@@ -1,10 +1,13 @@
 use core::task::Poll;
 
-use futures::{Future};
+use futures::Future;
 
 pub mod mutex;
+pub mod sleep_future;
 /// Implements a waker for waking multiple tasks
 pub mod waker_list;
+
+pub use sleep_future::sleep;
 
 pub async fn yield_now() {
     struct YieldNow {

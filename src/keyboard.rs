@@ -3,11 +3,12 @@ use core::{
     task::{Context, Poll},
 };
 
-use crate::{println, vga_print};
+use crate::vga_print;
 use conquer_once::spin::OnceCell;
 use crossbeam_queue::ArrayQueue;
 use futures::{task::AtomicWaker, Stream, StreamExt};
 use pc_keyboard::{layouts, Keyboard, ScancodeSet1};
+use tracing::warn;
 
 static SCANCODE_QUEUE: OnceCell<ArrayQueue<u8>> = OnceCell::uninit();
 static WAKER: AtomicWaker = AtomicWaker::new();
@@ -15,7 +16,7 @@ static WAKER: AtomicWaker = AtomicWaker::new();
 pub(crate) fn add_scancode(scancode: u8) {
     if let Ok(queue) = SCANCODE_QUEUE.try_get() {
         if queue.push(scancode).is_err() {
-            println!("WARN: scancode queue full; dropping keyboard input");
+            warn!("scancode queue full; dropping keyboard input");
         } else {
             WAKER.wake();
         }

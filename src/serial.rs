@@ -1,11 +1,15 @@
+use core::u16;
+
 use lazy_static::lazy_static;
 use spin::Mutex;
 use uart_16550::SerialPort;
 use x86_64::instructions::interrupts;
 
+const SERIAL_ADDR: u16 = 0x3f8;
+
 lazy_static! {
     pub static ref SERIAL1: Mutex<SerialPort> = {
-        let mut serial_port = unsafe { SerialPort::new(0x3F8) };
+        let mut serial_port = unsafe { SerialPort::new(SERIAL_ADDR) };
         serial_port.init();
         Mutex::new(serial_port)
     };

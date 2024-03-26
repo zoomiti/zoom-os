@@ -15,8 +15,13 @@ pub struct WakerListInner {
 }
 
 impl WakerList {
-    pub fn new() -> Self {
-        Default::default()
+    pub const fn new() -> Self {
+        Self {
+            inner: Mutex::new(WakerListInner {
+                id: 0,
+                wakers: BTreeMap::new(),
+            }),
+        }
     }
 
     pub fn notify_one(&self) {
@@ -29,7 +34,7 @@ impl WakerList {
     pub fn handle(&self) -> WakerListHandle<'_> {
         let mut inner = self.inner.lock();
         let id = inner.id;
-        inner.id += 1;
+        (inner.id, _) = inner.id.overflowing_add(1);
         WakerListHandle {
             id,
             inner: &self.inner,
