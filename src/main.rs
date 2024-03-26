@@ -10,10 +10,9 @@ use core::{panic::PanicInfo, time::Duration};
 
 use alloc::sync::Arc;
 use bootloader::{entry_point, BootInfo};
-use tracing::debug;
+use tracing::{debug, error};
 use zoom_os::{
     keyboard::print_keypresses,
-    println,
     task::{run, spawn},
     util::r#async::{mutex::Mutex, sleep},
     vga_print, vga_println,
@@ -21,7 +20,7 @@ use zoom_os::{
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
+    error!("{}", info);
     loop {}
 }
 

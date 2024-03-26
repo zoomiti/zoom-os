@@ -102,7 +102,7 @@ pub fn init(boot_info: &'static BootInfo) {
     tracing::init();
     gdt::init();
     interrupts::init_idt();
-    unsafe { interrupts::PICS.lock().initialize() }
+    unsafe { interrupts::PICS.spin_lock().initialize() }
     x86_64::instructions::interrupts::enable();
 }
 

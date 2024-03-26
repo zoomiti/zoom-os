@@ -1,9 +1,10 @@
 use core::u16;
 
 use lazy_static::lazy_static;
-use spin::Mutex;
 use uart_16550::SerialPort;
 use x86_64::instructions::interrupts;
+
+use crate::util::r#async::mutex::Mutex;
 
 const SERIAL_ADDR: u16 = 0x3f8;
 
@@ -21,7 +22,7 @@ pub fn _print(args: ::core::fmt::Arguments) {
 
     interrupts::without_interrupts(|| {
         SERIAL1
-            .lock()
+            .spin_lock()
             .write_fmt(args)
             .expect("Printing to serial failed");
     })

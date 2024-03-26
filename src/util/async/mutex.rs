@@ -10,7 +10,7 @@ use core::{
 use alloc::fmt;
 use futures::Future;
 
-use super::waker_list::{WakerList, WakerListHandle};
+use super::waker_list::WakerList;
 
 #[derive(Default)]
 pub struct Mutex<T: ?Sized> {
@@ -54,7 +54,7 @@ impl<T: ?Sized> Mutex<T> {
         loop {
             MutexLocker {
                 locked: &self.locked,
-                wake_handle: self.wakeup_list.handle(),
+                waker_list: &self.wakeup_list,
             }
             .await;
             if let Some(guard) = self.try_lock() {
@@ -123,14 +123,14 @@ impl<T: ?Sized> Drop for MutexGuard<'_, T> {
 
 struct MutexLocker<'t> {
     locked: &'t AtomicBool,
-    wake_handle: WakerListHandle<'t>,
+    waker_list: &'t WakerList,
 }
 
 impl Future for MutexLocker<'_> {
     type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.locked.load(Ordering::Acquire) {
-            self.wake_handle.register(cx.waker().clone());
+            self.waker_list.register(cx.waker().clone());
             Poll::Pending
         } else {
             Poll::Ready(())

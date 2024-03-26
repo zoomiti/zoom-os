@@ -1,10 +1,7 @@
-use core::{
-    sync::atomic::{Ordering},
-};
+use core::sync::atomic::Ordering;
 
 use pc_keyboard::{layouts, HandleControl, Keyboard, ScancodeSet1};
 use pic8259::ChainedPics;
-use spin::Mutex;
 use x86_64::{
     instructions::port::Port,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
@@ -13,7 +10,10 @@ use x86_64::{
 use crate::{
     gdt,
     keyboard::add_scancode,
-    util::r#async::sleep_future::{wake_sleep, MONOTONIC_TIME},
+    util::r#async::{
+        mutex::Mutex,
+        sleep_future::{wake_sleep, MONOTONIC_TIME},
+    },
     vga_println,
 };
 
@@ -22,11 +22,11 @@ use lazy_static::lazy_static;
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
-pub static PICS: spin::Mutex<ChainedPics> =
-    spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
+pub static PICS: Mutex<ChainedPics> =
+    Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 fn notify_end_of_interrupt(index: InterruptIndex) {
-    unsafe { PICS.lock().notify_end_of_interrupt(index.as_u8()) }
+    unsafe { PICS.spin_lock().notify_end_of_interrupt(index.as_u8()) }
 }
 
 #[derive(Debug, Clone, Copy)]

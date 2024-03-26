@@ -5,28 +5,14 @@ use x86_64::{
     VirtAddr,
 };
 
+use crate::util::r#async::mutex::Mutex;
+
 use self::linked_list::LinkedListAllocator;
 
 pub mod linked_list;
 
-pub struct Locked<T> {
-    inner: spin::Mutex<T>,
-}
-
-impl<T> Locked<T> {
-    pub const fn new(inner: T) -> Self {
-        Self {
-            inner: spin::Mutex::new(inner),
-        }
-    }
-
-    pub fn lock(&self) -> spin::MutexGuard<'_, T> {
-        self.inner.lock()
-    }
-}
-
 #[global_allocator]
-static ALLOCATOR: Locked<LinkedListAllocator> = Locked::new(LinkedListAllocator::new());
+static ALLOCATOR: Mutex<LinkedListAllocator> = Mutex::new(LinkedListAllocator::new());
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024;
@@ -54,7 +40,7 @@ pub fn init_heap(
     }
 
     unsafe {
-        ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
+        ALLOCATOR.spin_lock().init(HEAP_START, HEAP_SIZE);
     }
 
     Ok(())

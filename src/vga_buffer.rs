@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 use core::fmt;
 use lazy_static::lazy_static;
-use spin::Mutex;
 use volatile::Volatile;
 use x86_64::instructions::interrupts;
+
+use crate::util::r#async::mutex::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -143,6 +144,6 @@ pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
 
     interrupts::without_interrupts(|| {
-        WRITER.lock().write_fmt(args).unwrap();
+        WRITER.spin_lock().write_fmt(args).unwrap();
     });
 }

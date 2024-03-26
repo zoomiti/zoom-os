@@ -3,14 +3,13 @@ use core::{
     task::{Context, Poll},
 };
 
-use crate::vga_print;
-use conquer_once::spin::OnceCell;
+use crate::{util::once::OnceLock, vga_print};
 use crossbeam_queue::ArrayQueue;
 use futures::{task::AtomicWaker, Stream, StreamExt};
 use pc_keyboard::{layouts, Keyboard, ScancodeSet1};
 use tracing::warn;
 
-static SCANCODE_QUEUE: OnceCell<ArrayQueue<u8>> = OnceCell::uninit();
+static SCANCODE_QUEUE: OnceLock<ArrayQueue<u8>> = OnceLock::uninit();
 static WAKER: AtomicWaker = AtomicWaker::new();
 
 pub(crate) fn add_scancode(scancode: u8) {
