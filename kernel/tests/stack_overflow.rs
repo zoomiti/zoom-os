@@ -4,14 +4,18 @@
 
 use core::panic::PanicInfo;
 
+use kernel::{
+    print, println,
+    qemu::exit_qemu,
+    util::{hlt_loop, once::Lazy},
+};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use zoom_os::{exit_qemu, hlt_loop, print, println, util::once::Lazy};
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     print!("stack_overflow::stack_overflow...\t");
 
-    zoom_os::gdt::init();
+    kernel::gdt::init();
     init_test_init();
 
     // trigger stack overflow
@@ -31,7 +35,7 @@ static TEST_IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     unsafe {
         idt.double_fault
             .set_handler_fn(test_double_fault_handler)
-            .set_stack_index(zoom_os::gdt::DOUBLE_FAULT_IST_INDEX);
+            .set_stack_index(kernel::gdt::DOUBLE_FAULT_IST_INDEX);
     }
 
     idt
@@ -46,11 +50,11 @@ extern "x86-interrupt" fn test_double_fault_handler(
     _error_code: u64,
 ) -> ! {
     println!("[ok]");
-    exit_qemu(zoom_os::QemuExitCode::Success);
+    exit_qemu(kernel::qemu::QemuExitCode::Success);
     hlt_loop()
 }
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    zoom_os::test_panic_handler(info)
+    kernel::testing::test_panic_handler(info)
 }

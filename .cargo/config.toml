@@ -1,9 +1,3 @@
-[build]
-target = "x86_64-zoom_os.json"
-
 [unstable]
-build-std = ["core", "compiler_builtins", "alloc"]
-build-std-features = ["compiler-builtins-mem"]
+bindeps = true
 
-[target.'cfg(target_os = "none")']
-runner = "bootimage runner"

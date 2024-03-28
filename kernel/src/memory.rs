@@ -1,12 +1,36 @@
-use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
+use bootloader_api::{
+    info::{MemoryRegionKind, MemoryRegions},
+    BootInfo,
+};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
-        page_table::FrameError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTable,
-        PhysFrame, Size4KiB,
+        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB,
     },
     PhysAddr, VirtAddr,
 };
+
+use crate::{
+    util::{
+        once::{Lazy, OnceLock, TryInitError},
+        r#async::mutex::Mutex,
+    },
+    PHYS_OFFSET,
+};
+
+pub static PAGE_ALLOCATOR: OnceLock<Mutex<BootInfoFrameAllocator>> = OnceLock::new();
+
+pub static MAPPER: Lazy<Mutex<OffsetPageTable>> = Lazy::new(|| {
+    let phys_mem_offset = VirtAddr::new(*PHYS_OFFSET.get().expect("Should be init"));
+    unsafe { Mutex::new(init_offset_table(phys_mem_offset)) }
+});
+
+pub fn init(boot_info: &'static BootInfo) -> Result<(), TryInitError> {
+    PAGE_ALLOCATOR.try_init_once(|| {
+        Mutex::new(unsafe { BootInfoFrameAllocator::init(&boot_info.memory_regions) })
+    })?;
+    Ok(())
+}
 
 /// Initialize a new OffsetPageTable.
 ///
@@ -15,8 +39,8 @@ use x86_64::{
 /// complete physical memory is mapped to virtual memory at the passed
 /// `physical_memory_offset`. Also, this function must be only called once
 /// to avoid aliasing `&mut` references (which is undefined behavior).
-pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
-    let level_4_table = activate_level_4_table(physical_memory_offset);
+pub unsafe fn init_offset_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+    let level_4_table = active_level_4_table(physical_memory_offset);
     OffsetPageTable::new(level_4_table, physical_memory_offset)
 }
 
@@ -27,7 +51,7 @@ pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static>
 /// complete physical memory is mapped to virtual memory at the passed
 /// `physical_memory_offset`. Also, this function must be only called once
 /// to avoid aliasing `&mut` references (which is undefined behavior).
-unsafe fn activate_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut PageTable {
+pub unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut PageTable {
     let (level_4_table_frame, _) = Cr3::read();
 
     let phys = level_4_table_frame.start_address();
@@ -85,26 +109,8 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Opt
     Some(frame.start_address() + u64::from(addr.page_offset()))
 }
 
-/// Creates an example mapping for the given page to frame `0xb8000`.
-pub fn create_example_mapping(
-    page: Page,
-    mapper: &mut OffsetPageTable,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) {
-    use x86_64::structures::paging::PageTableFlags as Flags;
-
-    let frame = PhysFrame::containing_address(PhysAddr::new(0xb8000));
-    let flags = Flags::PRESENT | Flags::WRITABLE;
-
-    let map_to_result = unsafe {
-        // FIXME: this is not safe, we do it only for testing
-        mapper.map_to(page, frame, flags, frame_allocator)
-    };
-    map_to_result.expect("map_to failed").flush();
-}
-
 pub struct BootInfoFrameAllocator {
-    memory_map: &'static MemoryMap,
+    memory_map: &'static MemoryRegions,
     next: usize,
 }
 
@@ -115,7 +121,7 @@ impl BootInfoFrameAllocator {
     /// This function is unsafe because the caller must guarantee that the passed
     /// memory map is valid. The main requirement is that all frames that are marked
     /// as `USABLE` in it are really unused.
-    pub unsafe fn init(memory_map: &'static MemoryMap) -> Self {
+    pub unsafe fn init(memory_map: &'static MemoryRegions) -> Self {
         Self {
             memory_map,
             next: 0,
@@ -126,9 +132,9 @@ impl BootInfoFrameAllocator {
     fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
         // get usable regions from memory map
         let regions = self.memory_map.iter();
-        let usable_regions = regions.filter(|r| r.region_type == MemoryRegionType::Usable);
+        let usable_regions = regions.filter(|r| r.kind == MemoryRegionKind::Usable);
         // map each region to its address range
-        let addr_ranges = usable_regions.map(|r| r.range.start_addr()..r.range.end_addr());
+        let addr_ranges = usable_regions.map(|r| r.start..r.end);
         // transform to an iterator of frame start addresses
         let frame_addresses = addr_ranges.flat_map(|r| r.step_by(4096));
         // create `PhysFrame` types from the start addresses

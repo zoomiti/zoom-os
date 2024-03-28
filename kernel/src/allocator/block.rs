@@ -4,7 +4,7 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::util::r#async::mutex::Mutex;
+use crate::util::{once::Lazy, r#async::mutex::Mutex};
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 512, 1024, 2048];
 
@@ -54,9 +54,9 @@ fn list_index(layout: &Layout) -> Option<usize> {
     BLOCK_SIZES.iter().position(|&s| s >= required_block_size)
 }
 
-unsafe impl GlobalAlloc for Mutex<FixedSizeBlockAllocator> {
+unsafe impl GlobalAlloc for Lazy<Mutex<FixedSizeBlockAllocator>> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        let mut alloc = self.spin_lock();
+        let mut alloc = self.get_or_init().spin_lock();
         match list_index(&layout) {
             Some(index) => match alloc.list_heads[index].take() {
                 Some(node) => {
@@ -76,7 +76,7 @@ unsafe impl GlobalAlloc for Mutex<FixedSizeBlockAllocator> {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let mut alloc = self.spin_lock();
+        let mut alloc = self.get_or_init().spin_lock();
         match list_index(&layout) {
             Some(index) => {
                 let new_node = ListNode {
