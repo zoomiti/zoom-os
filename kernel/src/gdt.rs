@@ -2,7 +2,7 @@ use core::ptr;
 
 use x86_64::{
     instructions::tables::load_tss,
-    registers::segmentation::{Segment, CS},
+    registers::segmentation::{Segment, CS, DS, SS},
     structures::{
         gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector},
         tss::TaskStateSegment,
@@ -29,26 +29,31 @@ static TSS: Lazy<TaskStateSegment> = Lazy::new(|| {
 
 static GDT: Lazy<(GlobalDescriptorTable, Selectors)> = Lazy::new(|| {
     let mut gdt = GlobalDescriptorTable::new();
-    let code_selector = gdt.append(Descriptor::kernel_code_segment());
+    let kernel_code_selector = gdt.append(Descriptor::kernel_code_segment());
+    let kernel_data_selector = gdt.append(Descriptor::kernel_data_segment());
     let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));
     (
         gdt,
         Selectors {
-            code_selector,
+            kernel_code_selector,
+            kernel_data_selector,
             tss_selector,
         },
     )
 });
 
 struct Selectors {
-    code_selector: SegmentSelector,
+    kernel_code_selector: SegmentSelector,
+    kernel_data_selector: SegmentSelector,
     tss_selector: SegmentSelector,
 }
 
 pub fn init() {
     GDT.0.load();
     unsafe {
-        CS::set_reg(GDT.1.code_selector);
+        CS::set_reg(GDT.1.kernel_code_selector);
+        DS::set_reg(GDT.1.kernel_data_selector);
+        SS::set_reg(SegmentSelector(0));
         load_tss(GDT.1.tss_selector);
     }
 }

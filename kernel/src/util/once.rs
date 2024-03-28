@@ -58,6 +58,15 @@ impl<T> OnceLock<T> {
         }
     }
 
+    pub fn init_once(&self, func: impl FnOnce() -> T) {
+        if !self.is_init() {
+            let mut func = Some(func);
+            // # Safety
+            // the inner function is only called once
+            self.try_init_inner(&mut || unsafe { func.take().unwrap_unchecked() }());
+        }
+    }
+
     pub fn try_get(&self) -> Result<&T, TryGetError> {
         match self.is_init() {
             true => Ok(unsafe { self.get_unchecked() }),

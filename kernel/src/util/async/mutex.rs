@@ -71,6 +71,10 @@ impl<T: ?Sized> Mutex<T> {
             core::hint::spin_loop();
         }
     }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        self.inner.get_mut()
+    }
 }
 
 impl<T: ?Sized + Debug> Debug for Mutex<T> {
