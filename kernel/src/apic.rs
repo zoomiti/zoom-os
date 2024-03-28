@@ -99,6 +99,7 @@ pub fn init() {
             let mut io = IoApic::new(io_apic_phys_addr.as_u64());
             io.init(32); // 16
 
+            // Setup Redirects
             let redirects = &apic.interrupt_source_overrides;
 
             for redirect in redirects.iter() {
@@ -128,6 +129,14 @@ pub fn init() {
                 io.set_table_entry(redirect.global_system_interrupt as u8, entry);
                 io.enable_irq(redirect.isa_source);
             }
+
+            // Setup keyboard redirect
+            let mut entry = RedirectionTableEntry::default();
+            entry.set_dest(lapic.id() as u8);
+            entry.set_vector(33);
+            entry.set_flags(IrqFlags::LEVEL_TRIGGERED);
+            io.set_table_entry(1, entry);
+            io.enable_irq(1);
         }
     }
     LAPIC.try_init_once(|| Mutex::new(lapic)).unwrap();

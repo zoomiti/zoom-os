@@ -149,29 +149,10 @@ extern "x86-interrupt" fn clock_interrupt_handler(_stack_frame: InterruptStackFr
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    //static KEYBOARD: Lazy<Mutex<Keyboard<layouts::Us104Key, ScancodeSet1>>> = Lazy::new(|| {
-    //    Mutex::new(Keyboard::new(
-    //        ScancodeSet1::new(),
-    //        layouts::Us104Key,
-    //        HandleControl::Ignore,
-    //    ))
-    //});
-
-    //let mut keyboard = KEYBOARD.lock();
     let mut port = Port::new(0x60);
 
     let scancode: u8 = unsafe { port.read() };
-    print!("{}", scancode);
     add_scancode(scancode);
-
-    //if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-    //    if let Some(key) = keyboard.process_keyevent(key_event) {
-    //        match key {
-    //            DecodedKey::Unicode(character) => vga_print!("{}", character),
-    //            DecodedKey::RawKey(key) => vga_print!("{:?}", key),
-    //        }
-    //    }
-    //}
 
     notify_end_of_interrupt();
 }
