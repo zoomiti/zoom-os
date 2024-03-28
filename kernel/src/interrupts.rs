@@ -141,7 +141,6 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 }
 
 extern "x86-interrupt" fn clock_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    print!(",");
     let curr_time = MONOTONIC_TIME.fetch_add(1, Ordering::Acquire);
     wake_sleep(curr_time);
     notify_end_of_interrupt();

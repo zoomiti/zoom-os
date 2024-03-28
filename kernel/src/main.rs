@@ -6,15 +6,16 @@
 
 extern crate alloc;
 
-use core::{panic::PanicInfo};
+use core::{panic::PanicInfo, time::Duration};
 
 use alloc::sync::Arc;
 use bootloader_api::{entry_point, BootInfo};
 use kernel::{
-    keyboard::print_keypresses, println,
+    keyboard::print_keypresses,
+    print, println,
     qemu::exit_qemu,
     task::{run, spawn},
-    util::r#async::{mutex::Mutex},
+    util::r#async::{mutex::Mutex, sleep},
     BOOTLOADER_CONFIG,
 };
 use tracing::{debug, error, Level};
@@ -51,15 +52,13 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let locked2 = Arc::clone(&locked1);
     debug!(?locked1, ?locked2, "Setting up the async mutex demo");
 
-    /*
     spawn(async move {
         loop {
             {
                 let _guard = locked1.lock().await;
                 print!(".");
             }
-            //sleep(Duration::from_millis(150)).await;
-            yield_now().await;
+            sleep(Duration::from_secs(1)).await;
         }
     });
 
@@ -69,11 +68,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                 let _guard = locked2.lock().await;
                 print!("!");
             }
-            //sleep(Duration::from_millis(450)).await;
-            yield_now().await;
+            sleep(Duration::from_secs(3)).await;
         }
     });
-    */
 
     #[cfg(test)]
     test_main();

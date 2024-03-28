@@ -97,7 +97,8 @@ pub fn init() {
 
         unsafe {
             let mut io = IoApic::new(io_apic_phys_addr.as_u64());
-            io.init(32); // 16
+            let offset = 32;
+            io.init(offset); // 16
 
             // Setup Redirects
             let redirects = &apic.interrupt_source_overrides;
@@ -133,10 +134,18 @@ pub fn init() {
             // Setup keyboard redirect
             let mut entry = RedirectionTableEntry::default();
             entry.set_dest(lapic.id() as u8);
-            entry.set_vector(33);
+            entry.set_vector(InterruptIndex::Keyboard as u8);
             entry.set_flags(IrqFlags::LEVEL_TRIGGERED);
-            io.set_table_entry(1, entry);
-            io.enable_irq(1);
+            io.set_table_entry(InterruptIndex::Keyboard as u8 - offset, entry);
+            io.enable_irq(InterruptIndex::Keyboard as u8 - offset);
+
+            // Setup RTC redirect
+            let mut entry = RedirectionTableEntry::default();
+            entry.set_dest(lapic.id() as u8);
+            entry.set_vector(InterruptIndex::Clock as u8);
+            entry.set_flags(IrqFlags::LEVEL_TRIGGERED);
+            io.set_table_entry(InterruptIndex::Clock as u8 - offset, entry);
+            io.enable_irq(InterruptIndex::Clock as u8 - offset);
         }
     }
     LAPIC.try_init_once(|| Mutex::new(lapic)).unwrap();

@@ -17,7 +17,7 @@ use crate::task::spawn;
 use super::mutex::Mutex;
 
 // Actually closer to 54.9254 ms
-pub const TIMER_FREQ: Duration = Duration::from_millis(55);
+pub const TIMER_FREQ: Duration = Duration::from_micros(976);
 pub static MONOTONIC_TIME: AtomicUsize = AtomicUsize::new(0);
 
 // TODO: Fix overflow issue
