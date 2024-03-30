@@ -4,6 +4,8 @@ use core::{
     ptr::NonNull,
 };
 
+use x86_64::instructions::interrupts;
+
 use crate::util::{once::Lazy, r#async::mutex::Mutex};
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 512, 1024, 2048];
@@ -56,42 +58,46 @@ fn list_index(layout: &Layout) -> Option<usize> {
 
 unsafe impl GlobalAlloc for Lazy<Mutex<FixedSizeBlockAllocator>> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        let mut alloc = self.get_or_init().spin_lock();
-        match list_index(&layout) {
-            Some(index) => match alloc.list_heads[index].take() {
-                Some(node) => {
-                    alloc.list_heads[index] = node.next.take();
-                    node as *mut ListNode as *mut u8
-                }
-                None => {
-                    let block_size = BLOCK_SIZES[index];
+        interrupts::without_interrupts(|| {
+            let mut alloc = self.get_or_init().spin_lock();
+            match list_index(&layout) {
+                Some(index) => match alloc.list_heads[index].take() {
+                    Some(node) => {
+                        alloc.list_heads[index] = node.next.take();
+                        node as *mut ListNode as *mut u8
+                    }
+                    None => {
+                        let block_size = BLOCK_SIZES[index];
 
-                    let block_align = block_size;
-                    let layout = Layout::from_size_align(block_size, block_align).unwrap();
-                    alloc.fallback_alloc(layout)
-                }
-            },
-            None => alloc.fallback_alloc(layout),
-        }
+                        let block_align = block_size;
+                        let layout = Layout::from_size_align(block_size, block_align).unwrap();
+                        alloc.fallback_alloc(layout)
+                    }
+                },
+                None => alloc.fallback_alloc(layout),
+            }
+        })
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let mut alloc = self.get_or_init().spin_lock();
-        match list_index(&layout) {
-            Some(index) => {
-                let new_node = ListNode {
-                    next: alloc.list_heads[index].take(),
-                };
-                assert!(mem::size_of::<ListNode>() <= BLOCK_SIZES[index]);
-                assert!(mem::align_of::<ListNode>() <= BLOCK_SIZES[index]);
-                let new_node_ptr = ptr as *mut ListNode;
-                new_node_ptr.write(new_node);
-                alloc.list_heads[index] = Some(&mut *new_node_ptr);
+        interrupts::without_interrupts(|| {
+            let mut alloc = self.get_or_init().spin_lock();
+            match list_index(&layout) {
+                Some(index) => {
+                    let new_node = ListNode {
+                        next: alloc.list_heads[index].take(),
+                    };
+                    assert!(mem::size_of::<ListNode>() <= BLOCK_SIZES[index]);
+                    assert!(mem::align_of::<ListNode>() <= BLOCK_SIZES[index]);
+                    let new_node_ptr = ptr as *mut ListNode;
+                    new_node_ptr.write(new_node);
+                    alloc.list_heads[index] = Some(&mut *new_node_ptr);
+                }
+                None => {
+                    let ptr = NonNull::new(ptr).unwrap();
+                    alloc.fallback_allocator.deallocate(ptr, layout);
+                }
             }
-            None => {
-                let ptr = NonNull::new(ptr).unwrap();
-                alloc.fallback_allocator.deallocate(ptr, layout);
-            }
-        }
+        });
     }
 }

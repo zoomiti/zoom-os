@@ -14,7 +14,7 @@ use crate::{
     apic::LAPIC,
     gdt,
     keyboard::add_scancode,
-    print, println, rtc,
+    println, rtc,
     util::{
         once::Lazy,
         r#async::sleep_future::{wake_sleep, MONOTONIC_TIME},

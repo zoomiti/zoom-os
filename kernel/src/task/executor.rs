@@ -60,10 +60,10 @@ impl Executor {
                 debug!(task_id = task_id.0, "Task was woken up more than necessary");
                 continue;
             };
+            drop(task_waker);
 
             let mut context = Context::from_waker(&waker);
 
-            drop(task_waker);
             match task.poll(&mut context) {
                 Poll::Ready(()) => {}
                 Poll::Pending => {

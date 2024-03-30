@@ -9,6 +9,7 @@ use core::{
 
 use alloc::fmt;
 use futures::Future;
+use tracing::trace;
 
 use super::waker_list::WakerList;
 
@@ -64,9 +65,14 @@ impl<T: ?Sized> Mutex<T> {
     }
 
     pub fn spin_lock(&self) -> MutexGuard<'_, T> {
+        let mut first = true;
         loop {
             if let Some(lock) = self.try_lock() {
                 return lock;
+            }
+            if first {
+                first = false;
+                trace!("spinning");
             }
             core::hint::spin_loop();
         }
@@ -115,6 +121,18 @@ impl<T: ?Sized> Deref for MutexGuard<'_, T> {
 
 impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+    }
+}
+
+impl<T: ?Sized> AsRef<T> for MutexGuard<'_, T> {
+    fn as_ref(&self) -> &T {
+        self.inner
+    }
+}
+
+impl<T: ?Sized> AsMut<T> for MutexGuard<'_, T> {
+    fn as_mut(&mut self) -> &mut T {
         self.inner
     }
 }

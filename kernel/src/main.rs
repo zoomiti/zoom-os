@@ -1,24 +1,26 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
+#![feature(never_type)]
 #![test_runner(kernel::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 extern crate alloc;
 
-use core::{panic::PanicInfo, time::Duration};
+use core::panic::PanicInfo;
 
-use alloc::sync::Arc;
 use bootloader_api::{entry_point, BootInfo};
 use kernel::{
+    display,
+    framebuffer::DISPLAY,
     keyboard::print_keypresses,
-    print, println,
+    println,
     qemu::exit_qemu,
+    rtc,
     task::{run, spawn},
-    util::r#async::{mutex::Mutex, sleep},
     BOOTLOADER_CONFIG,
 };
-use tracing::{debug, error, Level};
+use tracing::{error, info, span, Level};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -34,42 +36,18 @@ fn panic(info: &PanicInfo) -> ! {
 entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
-    if let Some(framebuffer) = boot_info.framebuffer.as_mut() {
-        for byte in framebuffer.buffer_mut() {
-            *byte = 0x90;
-        }
-    }
     kernel::init(boot_info);
+    let main_span = span!(Level::TRACE, "kernel_main");
+    let _span = main_span.enter();
+
+    let utc_date = rtc::read_date_time();
+    info!(%utc_date);
 
     spawn(print_keypresses());
+
     spawn(async {
-        println!("Asynchronously executed");
-        debug!("The tracer should be setup by now");
-    });
-
-    let locked = Mutex::new(());
-    let locked1 = Arc::new(locked);
-    let locked2 = Arc::clone(&locked1);
-    debug!(?locked1, ?locked2, "Setting up the async mutex demo");
-
-    spawn(async move {
-        loop {
-            {
-                let _guard = locked1.lock().await;
-                print!(".");
-            }
-            sleep(Duration::from_secs(1)).await;
-        }
-    });
-
-    spawn(async move {
-        loop {
-            {
-                let _guard = locked2.lock().await;
-                print!("!");
-            }
-            sleep(Duration::from_secs(3)).await;
-        }
+        let mut display = DISPLAY.get().unwrap().spin_lock();
+        display::clock::draw_clock(display.as_mut()).await;
     });
 
     #[cfg(test)]

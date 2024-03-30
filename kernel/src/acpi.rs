@@ -17,9 +17,7 @@ pub static INTERRUPT_MODEL: OnceLock<InterruptModel<Global>> = OnceLock::new();
 pub static KERNEL_ACPI_ADDR: OnceLock<VirtAddr> = OnceLock::new();
 pub const KERNEL_ACPI_LEN: usize = 1024 * 1024;
 
-pub fn init(boot_info: &'static bootloader_api::BootInfo) {
-    let rsdp = boot_info.rsdp_addr.into_option().unwrap();
-
+pub fn init(rsdp: u64) {
     let acpi_tables = match unsafe { AcpiTables::from_rsdp(KernelAcpi::new(), rsdp as usize) } {
         Ok(a) => a,
         Err(e) => panic!("acpi error: {:#?}\n is this a bios issue?", e),

@@ -34,12 +34,17 @@ pub async fn sleep(dur: Duration) {
 }
 
 async fn register_sleep(tick: usize, waker: Waker) {
-    interrupts::disable();
+    let enabled = interrupts::are_enabled();
+    if enabled {
+        interrupts::disable();
+    }
     let mut service = WAKEUP_SERVICE.lock().await;
     let requested = service.entry(Reverse(tick)).or_default();
     requested.push(waker);
     drop(service);
-    interrupts::enable();
+    if enabled {
+        interrupts::enable();
+    }
 }
 
 pub(crate) fn wake_sleep(tick: usize) {

@@ -1,7 +1,4 @@
-use bootloader_api::{
-    info::{MemoryRegionKind, MemoryRegions},
-    BootInfo,
-};
+use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
@@ -25,10 +22,9 @@ pub static MAPPER: Lazy<Mutex<OffsetPageTable>> = Lazy::new(|| {
     unsafe { Mutex::new(init_offset_table(phys_mem_offset)) }
 });
 
-pub fn init(boot_info: &'static BootInfo) -> Result<(), TryInitError> {
-    PAGE_ALLOCATOR.try_init_once(|| {
-        Mutex::new(unsafe { BootInfoFrameAllocator::init(&boot_info.memory_regions) })
-    })?;
+pub fn init(memory_regions: &'static MemoryRegions) -> Result<(), TryInitError> {
+    PAGE_ALLOCATOR
+        .try_init_once(|| Mutex::new(unsafe { BootInfoFrameAllocator::init(memory_regions) }))?;
     Ok(())
 }
 

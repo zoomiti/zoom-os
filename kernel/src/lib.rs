@@ -12,6 +12,7 @@ extern crate alloc;
 pub mod acpi;
 pub mod allocator;
 pub mod apic;
+pub mod display;
 pub mod framebuffer;
 pub mod gdt;
 pub mod interrupts;
@@ -22,25 +23,23 @@ pub mod rtc;
 pub mod serial;
 pub mod task;
 pub mod testing;
-pub mod tracing;
+pub mod tracer;
 pub mod util;
 // Deprecated since new version of bootloader
 //pub mod vga_buffer;
 
-use ::tracing::trace;
 use acpi::{KERNEL_ACPI_ADDR, KERNEL_ACPI_LEN};
 use allocator::{KERNEL_HEAP_ADDR, KERNEL_HEAP_LEN};
 use apic::{KERNEL_APIC_ADDR, KERNEL_APIC_LEN};
 #[cfg(test)]
 use bootloader_api::entry_point;
 use bootloader_api::{config::Mapping, BootInfo, BootloaderConfig};
+use tracing::{info, span, trace, Level};
 use util::once::OnceLock;
 use x86_64::{
-    structures::paging::{Page, Size4KiB, Translate},
+    structures::paging::{Page, Size4KiB},
     VirtAddr,
 };
-
-use crate::memory::MAPPER;
 
 pub static PHYS_OFFSET: OnceLock<u64> = OnceLock::new();
 
@@ -84,38 +83,25 @@ pub fn init(boot_info: &'static mut BootInfo) {
 
     PHYS_OFFSET.init_once(|| phys_offset);
 
-    let addresses = [
-        0xffff800000000000,
-        // the identity-mapped vga buffer page
-        0xb8000,
-        // some code page
-        0x201008,
-        // some stack page
-        0x0100_0020_1a10,
-        // trouble
-        0xb8f00,
-        // virtual address mapped to physical address 0
-        phys_offset,
-    ];
+    memory::init(&boot_info.memory_regions).expect("page alloc failed to be created");
+    tracer::init();
+    let init_span = span!(Level::TRACE, "init");
+    let _guard = init_span.enter();
 
-    for &address in &addresses {
-        let virt = VirtAddr::new(address);
-        let phys = MAPPER.spin_lock().translate_addr(virt);
-        println!("{:?} -> {:?}", virt, phys);
-    }
-
-    memory::init(boot_info).expect("page alloc failed to be created");
-    tracing::init();
     gdt::init();
     trace!("init gdt");
     interrupts::init_idt();
     trace!("init idt");
-    acpi::init(boot_info);
+    // Unwrapping is okay because if we don't have rsdp we don't know how to boot
+    acpi::init(*boot_info.rsdp_addr.as_ref().unwrap());
     trace!("init acpi");
     apic::init();
     trace!("init apic");
     rtc::init();
     trace!("init rtc");
+    // I don't really want to support a target with no display
+    framebuffer::init(boot_info.framebuffer.as_mut().unwrap());
+    info!("init framebuffer");
 
     x86_64::instructions::interrupts::enable();
 }

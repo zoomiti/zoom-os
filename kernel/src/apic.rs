@@ -1,4 +1,3 @@
-use tracing::trace;
 use x2apic::{
     ioapic::{IoApic, IrqFlags, RedirectionTableEntry},
     lapic::{xapic_base, LocalApic, LocalApicBuilder, TimerDivide, TimerMode},
@@ -104,7 +103,6 @@ pub fn init() {
             let redirects = &apic.interrupt_source_overrides;
 
             for redirect in redirects.iter() {
-                trace!(?redirect, "entry in redirects");
                 let mut entry = RedirectionTableEntry::default();
                 entry.set_mode(x2apic::ioapic::IrqMode::Fixed);
                 let polarity = match redirect.polarity {

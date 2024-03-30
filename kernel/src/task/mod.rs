@@ -24,11 +24,11 @@ impl TaskId {
 
 pub struct Task {
     id: TaskId,
-    future: Pin<Box<dyn Future<Output = ()> + Send + Sync>>,
+    future: Pin<Box<dyn Future<Output = ()> + Send>>,
 }
 
 impl Task {
-    pub fn new(future: impl Future<Output = ()> + 'static + Send + Sync) -> Self {
+    pub fn new(future: impl Future<Output = ()> + Send + 'static) -> Self {
         Self {
             id: TaskId::new(),
             future: Box::pin(future),
@@ -40,8 +40,18 @@ impl Task {
     }
 }
 
-impl<F: Future<Output = ()> + 'static + Send + Sync> From<F> for Task {
+impl<F: Future<Output = ()> + Send + 'static> From<F> for Task {
     fn from(value: F) -> Self {
         Self::new(value)
     }
+}
+
+#[macro_export]
+macro_rules! loop_yield {
+    ($($body:tt)*) => {
+        loop {
+            $($body)*
+            $crate::util::r#async::yield_now().await;
+        }
+    };
 }
