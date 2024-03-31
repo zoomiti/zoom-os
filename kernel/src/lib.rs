@@ -4,6 +4,7 @@
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
 #![feature(const_mut_refs)]
+#![feature(error_in_core)]
 #![test_runner(crate::testing::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -28,6 +29,7 @@ pub mod util;
 // Deprecated since new version of bootloader
 //pub mod vga_buffer;
 
+use ::acpi::InterruptModel;
 use acpi::{KERNEL_ACPI_ADDR, KERNEL_ACPI_LEN};
 use allocator::{KERNEL_HEAP_ADDR, KERNEL_HEAP_LEN};
 use apic::{KERNEL_APIC_ADDR, KERNEL_APIC_LEN};
@@ -93,10 +95,14 @@ pub fn init(boot_info: &'static mut BootInfo) {
     interrupts::init_idt();
     trace!("init idt");
     // Unwrapping is okay because if we don't have rsdp we don't know how to boot
-    acpi::init(*boot_info.rsdp_addr.as_ref().unwrap());
+    let platform_info = acpi::init(*boot_info.rsdp_addr.as_ref().unwrap()).unwrap();
     trace!("init acpi");
-    apic::init();
-    trace!("init apic");
+    if let InterruptModel::Apic(apic_info) = platform_info.interrupt_model {
+        apic::init(apic_info).unwrap();
+        trace!("init apic");
+    } else {
+        trace!("no apic legacy pic mode");
+    }
     rtc::init();
     trace!("init rtc");
     // I don't really want to support a target with no display

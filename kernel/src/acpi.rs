@@ -1,7 +1,8 @@
 use core::ptr::NonNull;
 
-use acpi::{AcpiHandler, AcpiTables, InterruptModel, PhysicalMapping, PlatformInfo};
+use acpi::{AcpiError, AcpiHandler, AcpiTables, PhysicalMapping, PlatformInfo};
 use alloc::{alloc::Global, rc::Rc};
+use thiserror::Error;
 use x86_64::{
     structures::paging::{Mapper, Page, PageSize, PageTableFlags, PhysFrame, Size4KiB},
     PhysAddr, VirtAddr,
@@ -9,25 +10,30 @@ use x86_64::{
 
 use crate::{
     memory::{MAPPER, PAGE_ALLOCATOR},
-    util::{once::OnceLock, r#async::mutex::Mutex},
+    util::{
+        once::{OnceLock, TryInitError},
+        r#async::mutex::Mutex,
+    },
 };
-
-pub static INTERRUPT_MODEL: OnceLock<InterruptModel<Global>> = OnceLock::new();
 
 pub static KERNEL_ACPI_ADDR: OnceLock<VirtAddr> = OnceLock::new();
 pub const KERNEL_ACPI_LEN: usize = 1024 * 1024;
 
-pub fn init(rsdp: u64) {
-    let acpi_tables = match unsafe { AcpiTables::from_rsdp(KernelAcpi::new(), rsdp as usize) } {
-        Ok(a) => a,
-        Err(e) => panic!("acpi error: {:#?}\n is this a bios issue?", e),
-    };
+#[derive(Error, Debug)]
+pub enum AcpiInitError {
+    #[error("Rsdp ({1}) that bootloader found is bad: {0:?}")]
+    BadRsdp(AcpiError, u64),
+    #[error("Interrupt Model has already been init somehow")]
+    InterruptModelAlreadyInit(#[from] TryInitError),
+    #[error("PlatformInfo creation erorr: {0:?}")]
+    PlatformInfoError(AcpiError),
+}
 
-    if let Ok(platform_info) = PlatformInfo::new(&acpi_tables) {
-        INTERRUPT_MODEL
-            .try_init_once(|| platform_info.interrupt_model)
-            .unwrap();
-    }
+pub fn init(rsdp: u64) -> Result<PlatformInfo<'static, Global>, AcpiInitError> {
+    let acpi_tables = unsafe { AcpiTables::from_rsdp(KernelAcpi::new(), rsdp as usize) }
+        .map_err(|e| AcpiInitError::BadRsdp(e, rsdp))?;
+
+    PlatformInfo::new(&acpi_tables).map_err(AcpiInitError::PlatformInfoError)
 }
 
 #[derive(Debug, Clone)]
@@ -38,10 +44,7 @@ pub struct KernelAcpi {
 
 impl KernelAcpi {
     pub fn new() -> Self {
-        let start_addr = KERNEL_ACPI_ADDR
-            .get()
-            .expect("kernel acpi address not init")
-            .as_u64();
+        let start_addr = KERNEL_ACPI_ADDR.get().as_u64();
         let end_addr_exclusive = start_addr + KERNEL_ACPI_LEN as u64 - 1;
         Self {
             start_addr: Rc::new(Mutex::new(start_addr)),
@@ -83,7 +86,7 @@ impl AcpiHandler for KernelAcpi {
                     | PageTableFlags::WRITABLE
                     | PageTableFlags::NO_CACHE
                     | PageTableFlags::WRITE_THROUGH,
-                &mut *PAGE_ALLOCATOR.get().unwrap().spin_lock(),
+                &mut *PAGE_ALLOCATOR.get().spin_lock(),
             )
             .unwrap();
         res.flush();

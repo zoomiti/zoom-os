@@ -19,6 +19,7 @@ pc-keyboard = "0.7.0"
 pic8259 = "0.11.0"
 raw-cpuid = "11.0.1"
 smallvec = { version = "1.13.2", features = ["const_new", "const_generics", "union"] }
+thiserror = { version = "1.0", package = "thiserror-core" , default-features = false }
 tracing = { version = "0.1.40", default-features = false, features = ["attributes"] }
 uart_16550 = { version = "0.3.0", features = ["nightly"] }
 volatile = "0.2.6"

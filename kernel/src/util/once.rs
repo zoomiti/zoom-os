@@ -8,6 +8,8 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
 };
 
+use thiserror::Error;
+
 pub struct OnceLock<T> {
     inner: UnsafeCell<MaybeUninit<T>>,
     status: AtomicU8,
@@ -20,13 +22,14 @@ const INIT: u8 = 2;
 unsafe impl<T> Send for OnceLock<T> where T: Send {}
 unsafe impl<T> Sync for OnceLock<T> where T: Send + Sync {}
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TryGetError {
     Uninitialized,
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum TryInitError {
+    #[error("OnceLock has already been initialized")]
     AlreadyInitialized,
 }
 

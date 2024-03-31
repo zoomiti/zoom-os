@@ -35,7 +35,7 @@ pub fn init(memory_regions: &'static MemoryRegions) -> Result<(), TryInitError> 
 /// complete physical memory is mapped to virtual memory at the passed
 /// `physical_memory_offset`. Also, this function must be only called once
 /// to avoid aliasing `&mut` references (which is undefined behavior).
-pub unsafe fn init_offset_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+pub unsafe fn get_active_l4_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     let level_4_table = active_level_4_table(physical_memory_offset);
     OffsetPageTable::new(level_4_table, physical_memory_offset)
 }

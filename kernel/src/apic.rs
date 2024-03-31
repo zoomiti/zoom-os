@@ -1,18 +1,24 @@
+use acpi::platform::interrupt::Apic as ApicInfo;
+use alloc::alloc::Global;
+use thiserror::Error;
 use x2apic::{
     ioapic::{IoApic, IrqFlags, RedirectionTableEntry},
-    lapic::{xapic_base, LocalApic, LocalApicBuilder, TimerDivide, TimerMode},
+    lapic::{LocalApic, LocalApicBuilder, TimerDivide, TimerMode},
 };
 use x86_64::{
+    addr::PhysAddrNotValid,
     instructions::port::Port,
-    structures::paging::{Mapper, Page, PageTableFlags, PhysFrame, Size4KiB},
+    structures::paging::{mapper::MapToError, Mapper, Page, PageTableFlags, PhysFrame, Size4KiB},
     PhysAddr, VirtAddr,
 };
 
 use crate::{
-    acpi::INTERRUPT_MODEL,
     interrupts::InterruptIndex,
     memory::{MAPPER, PAGE_ALLOCATOR},
-    util::{once::OnceLock, r#async::mutex::Mutex},
+    util::{
+        once::{OnceLock, TryInitError},
+        r#async::mutex::Mutex,
+    },
 };
 
 pub static LAPIC: OnceLock<Mutex<LocalApic>> = OnceLock::new();
@@ -20,15 +26,33 @@ pub static LAPIC: OnceLock<Mutex<LocalApic>> = OnceLock::new();
 pub static KERNEL_APIC_ADDR: OnceLock<VirtAddr> = OnceLock::new();
 pub const KERNEL_APIC_LEN: usize = 4096;
 
-pub fn init() {
+#[derive(Error, Debug)]
+pub enum ApicInitError {
+    #[error(
+        "Found {:?} address but it is not a valid physical address for Lapic",
+        0.0
+    )]
+    BadLapicAddress(PhysAddrNotValid),
+    #[error("Couldn't map page for LApic")]
+    FailedToMapLApic(MapToError<Size4KiB>),
+    #[error("Failed to build lapic: {0}")]
+    LapicBuildFailed(&'static str),
+    #[error("Couldn't map page for IoApic")]
+    FailedToMapIoApic(MapToError<Size4KiB>),
+    #[error("Lapic already init")]
+    LapicAlreadyInit(#[from] TryInitError),
+}
+
+pub fn init(apic_info: ApicInfo<'static, Global>) -> Result<(), ApicInitError> {
     disable_8259();
 
     // SETUP LAPIC
+    let apic_phys_addr = apic_info.local_apic_address;
     let apic_phys_addr =
-        PhysAddr::try_new(unsafe { xapic_base() }).expect("physical address is not valid");
+        PhysAddr::try_new(apic_phys_addr).map_err(ApicInitError::BadLapicAddress)?;
     let apic_phys_frame = PhysFrame::<Size4KiB>::containing_address(apic_phys_addr);
 
-    let apic_virt_address = *KERNEL_APIC_ADDR.get().unwrap();
+    let apic_virt_address = *KERNEL_APIC_ADDR.get();
 
     let page = Page::containing_address(apic_virt_address);
 
@@ -40,13 +64,13 @@ pub fn init() {
                 | PageTableFlags::WRITABLE
                 | PageTableFlags::NO_CACHE
                 | PageTableFlags::NO_EXECUTE,
-            &mut *PAGE_ALLOCATOR.get().expect("should exist").spin_lock(),
+            &mut *PAGE_ALLOCATOR.get().spin_lock(),
         )
     }
-    .expect("should not fail to map apic")
+    .map_err(ApicInitError::FailedToMapLApic)?
     .flush();
 
-    let mut lapic = LocalApicBuilder::new()
+    let lapic = LocalApicBuilder::new()
         .timer_vector(InterruptIndex::Timer as usize)
         .error_vector(InterruptIndex::LapicErr as usize)
         .spurious_vector(InterruptIndex::Spurious as usize)
@@ -55,25 +79,19 @@ pub fn init() {
         .timer_initial(65535)
         .timer_divide(TimerDivide::Div256)
         .build()
-        .expect("");
+        .map_err(ApicInitError::LapicBuildFailed)?;
 
-    unsafe {
-        lapic.enable();
-    }
+    // Not using Lapic Timer
+    //unsafe {
+    //    lapic.enable();
+    //}
 
     // SETUP IOAPIC
-    let interrupt_model = INTERRUPT_MODEL.get().unwrap();
-    let apic = match interrupt_model {
-        acpi::InterruptModel::Apic(apic) => apic,
-        _ => panic!(),
-    };
-
-    let io_apics = &apic.io_apics;
+    let io_apics = &apic_info.io_apics;
     for io_apic in io_apics.iter() {
         let io_apic_phys_addr = PhysAddr::new(io_apic.address as u64);
 
         // Map io apic
-        PhysAddr::try_new(unsafe { xapic_base() }).expect("physical address is not valid");
         let io_apic_phys_frame = PhysFrame::<Size4KiB>::containing_address(io_apic_phys_addr);
 
         let apic_virt_address = VirtAddr::new(io_apic_phys_addr.as_u64());
@@ -88,10 +106,10 @@ pub fn init() {
                     | PageTableFlags::WRITABLE
                     | PageTableFlags::NO_CACHE
                     | PageTableFlags::NO_EXECUTE,
-                &mut *PAGE_ALLOCATOR.get().expect("should exist").spin_lock(),
+                &mut *PAGE_ALLOCATOR.get().spin_lock(),
             )
         }
-        .expect("should not fail to map apic")
+        .map_err(ApicInitError::FailedToMapIoApic)?
         .flush();
 
         unsafe {
@@ -100,7 +118,7 @@ pub fn init() {
             io.init(offset); // 16
 
             // Setup Redirects
-            let redirects = &apic.interrupt_source_overrides;
+            let redirects = &apic_info.interrupt_source_overrides;
 
             for redirect in redirects.iter() {
                 let mut entry = RedirectionTableEntry::default();
@@ -146,7 +164,8 @@ pub fn init() {
             io.enable_irq(InterruptIndex::Clock as u8 - offset);
         }
     }
-    LAPIC.try_init_once(|| Mutex::new(lapic)).unwrap();
+    LAPIC.try_init_once(|| Mutex::new(lapic))?;
+    Ok(())
 }
 
 fn disable_8259() {
