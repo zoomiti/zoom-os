@@ -14,6 +14,7 @@ use crate::{
     apic::LAPIC,
     gdt,
     keyboard::add_scancode,
+    pic::PICS,
     println, rtc,
     util::{
         once::Lazy,
@@ -26,9 +27,13 @@ pub const INTERRUPT_START: u8 = 32;
 //pub static PICS: Mutex<ChainedPics> =
 //   Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
-fn notify_end_of_interrupt() {
-    //unsafe { PICS.spin_lock().notify_end_of_interrupt(index.into()) }
-    unsafe { LAPIC.get().spin_lock().end_of_interrupt() }
+fn notify_end_of_interrupt(index: InterruptIndex) {
+    if let Ok(lapic) = LAPIC.try_get() {
+        unsafe { lapic.spin_lock().end_of_interrupt() }
+    } else {
+        // If LAPIC is not init that means we are in legacy mode
+        unsafe { PICS.spin_lock().notify_end_of_interrupt(index.into()) }
+    }
 }
 
 #[derive(Debug, Clone, Copy, IntoPrimitive)]
@@ -137,13 +142,13 @@ extern "x86-interrupt" fn segment_not_present_handler(
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    notify_end_of_interrupt();
+    notify_end_of_interrupt(InterruptIndex::Timer);
 }
 
 extern "x86-interrupt" fn clock_interrupt_handler(_stack_frame: InterruptStackFrame) {
     let curr_time = MONOTONIC_TIME.fetch_add(1, Ordering::Acquire);
     wake_sleep(curr_time);
-    notify_end_of_interrupt();
+    notify_end_of_interrupt(InterruptIndex::Clock);
     rtc::clear_interrup_mask();
 }
 
@@ -153,7 +158,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     let scancode: u8 = unsafe { port.read() };
     add_scancode(scancode);
 
-    notify_end_of_interrupt();
+    notify_end_of_interrupt(InterruptIndex::Keyboard);
 }
 
 extern "x86-interrupt" fn lapic_err_interrupt_handler(stack_frame: InterruptStackFrame) {

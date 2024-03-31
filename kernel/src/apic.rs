@@ -7,7 +7,6 @@ use x2apic::{
 };
 use x86_64::{
     addr::PhysAddrNotValid,
-    instructions::port::Port,
     structures::paging::{mapper::MapToError, Mapper, Page, PageTableFlags, PhysFrame, Size4KiB},
     PhysAddr, VirtAddr,
 };
@@ -15,6 +14,7 @@ use x86_64::{
 use crate::{
     interrupts::InterruptIndex,
     memory::{MAPPER, PAGE_ALLOCATOR},
+    pic::PICS,
     util::{
         once::{OnceLock, TryInitError},
         r#async::mutex::Mutex,
@@ -43,7 +43,7 @@ pub enum ApicInitError {
     LapicAlreadyInit(#[from] TryInitError),
 }
 
-pub fn init(apic_info: ApicInfo<'static, Global>) -> Result<(), ApicInitError> {
+pub fn init(apic_info: &ApicInfo<'static, Global>) -> Result<(), ApicInitError> {
     disable_8259();
 
     // SETUP LAPIC
@@ -171,7 +171,9 @@ pub fn init(apic_info: ApicInfo<'static, Global>) -> Result<(), ApicInitError> {
 fn disable_8259() {
     unsafe {
         // Disable 8259 immediately, thanks kennystrawnmusic
+        PICS.spin_lock().disable();
 
+        /*
         let mut cmd_8259a = Port::<u8>::new(0x20);
         let mut data_8259a = Port::<u8>::new(0x21);
         let mut cmd_8259b = Port::<u8>::new(0xa0);
@@ -200,5 +202,6 @@ fn disable_8259() {
 
         data_8259a.write(u8::MAX);
         data_8259b.write(u8::MAX);
+        */
     };
 }

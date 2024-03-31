@@ -19,6 +19,7 @@ pub mod gdt;
 pub mod interrupts;
 pub mod keyboard;
 pub mod memory;
+pub mod pic;
 pub mod qemu;
 pub mod rtc;
 pub mod serial;
@@ -95,12 +96,15 @@ pub fn init(boot_info: &'static mut BootInfo) {
     interrupts::init_idt();
     trace!("init idt");
     // Unwrapping is okay because if we don't have rsdp we don't know how to boot
-    let platform_info = acpi::init(*boot_info.rsdp_addr.as_ref().unwrap()).unwrap();
+    let platform_info = acpi::init(*boot_info.rsdp_addr.as_ref().unwrap());
     trace!("init acpi");
-    if let InterruptModel::Apic(apic_info) = platform_info.interrupt_model {
+    if let Ok(InterruptModel::Apic(apic_info)) =
+        platform_info.as_ref().map(|pi| &pi.interrupt_model)
+    {
         apic::init(apic_info).unwrap();
         trace!("init apic");
     } else {
+        pic::init();
         trace!("no apic legacy pic mode");
     }
     rtc::init();
@@ -109,7 +113,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     framebuffer::init(boot_info.framebuffer.as_mut().unwrap());
     info!("init framebuffer");
 
-    x86_64::instructions::interrupts::enable();
+    //x86_64::instructions::interrupts::enable();
 }
 
 pub const BOOTLOADER_CONFIG: BootloaderConfig = {
