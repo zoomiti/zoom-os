@@ -8,15 +8,14 @@ use embedded_graphics::{
 };
 use libm::{cosf, sinf};
 
-use crate::{rtc::read_date_time, util::r#async::sleep};
+use crate::{framebuffer::DISPLAY, rtc::read_date_time, util::r#async::sleep};
 
 const MARGIN: u32 = 50;
 
 #[allow(unused_must_use)]
-pub async fn draw_clock<D>(target: &mut D)
-where
-    D: DrawTarget<Color = Rgb888>,
-{
+pub async fn draw_clock() {
+    let mut disp = DISPLAY.get().lock().await;
+    let target = disp.as_mut();
     let bounding_box = target.bounding_box();
 
     let diameter = bounding_box.size.width.min(bounding_box.size.height) - 2 * MARGIN;
@@ -24,12 +23,16 @@ where
     let clock_face = Circle::with_center(bounding_box.center(), diameter);
     target.clear(Rgb888::BLACK);
     draw_face(target, &clock_face);
-    let mut last_time = None;
+    let mut last_time = read_date_time().time();
+    drop(disp);
+    let mut first = true;
     loop {
+        let mut disp = DISPLAY.get().lock().await;
+        let target = disp.as_mut();
         let time = read_date_time().time();
         //info!(%time);
 
-        if Some(time) == last_time {
+        if time == last_time {
             sleep(Duration::from_millis(50)).await;
             continue;
         }
@@ -47,28 +50,27 @@ where
             .into_styled(PrimitiveStyle::with_fill(Rgb888::WHITE))
             .draw(target);
 
-        let Some(last) = last_time else {
-            last_time = Some(time);
-            continue;
-        };
-        if last.second() != time.second() {
-            let seconds_radians = sexagesimal_to_angle(last.second());
+        if last_time.second() != time.second() {
+            let seconds_radians = sexagesimal_to_angle(last_time.second());
             draw_hand(target, &clock_face, seconds_radians, 0, Rgb888::BLACK);
             draw_second_decoration(target, &clock_face, seconds_radians, -20, Rgb888::BLACK);
 
             draw_face(target, &clock_face);
         }
-        if last.minute() != time.minute() {
-            let minutes_radians = sexagesimal_to_angle(last.minute());
+        if last_time.minute() != time.minute() {
+            let minutes_radians = sexagesimal_to_angle(last_time.minute());
             draw_hand(target, &clock_face, minutes_radians, -30, Rgb888::BLACK);
         }
-        if last.hour() != time.hour() {
-            let hours_radians = hour_to_angle(last.hour());
+        if last_time.hour() != time.hour() {
+            let hours_radians = hour_to_angle(last_time.hour());
             draw_hand(target, &clock_face, hours_radians, -60, Rgb888::BLACK);
         }
         sleep(Duration::from_millis(50)).await;
 
-        last_time = Some(time);
+        last_time = time;
+        if first {
+            first = false;
+        }
     }
 }
 

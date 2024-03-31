@@ -1,3 +1,5 @@
+use core::ptr::addr_of;
+
 use bootloader_api::info::{FrameBuffer, PixelFormat};
 use embedded_graphics::{
     draw_target::DrawTarget,
@@ -5,8 +7,16 @@ use embedded_graphics::{
     pixelcolor::{Rgb888, RgbColor},
     Pixel,
 };
+use x86_64::{
+    structures::paging::{Mapper, Page, PageTableFlags, Size4KiB},
+    VirtAddr,
+};
 
-use crate::util::{once::OnceLock, r#async::mutex::Mutex};
+use crate::{
+    memory::get_active_l4_table,
+    util::{once::OnceLock, r#async::mutex::Mutex},
+    PHYS_OFFSET,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
@@ -24,6 +34,33 @@ pub struct Color {
 pub static DISPLAY: OnceLock<Mutex<Display<'static>>> = OnceLock::new();
 
 pub fn init(framebuffer: &'static mut FrameBuffer) {
+    // Write combine
+    let buffer = framebuffer.buffer();
+
+    let page_range = {
+        let region_start = VirtAddr::new(addr_of!(buffer[0]) as u64);
+        let region_end = region_start + buffer.len() as u64 - 1;
+        let region_start_page = Page::<Size4KiB>::containing_address(region_start);
+        let region_end_page = Page::containing_address(region_end);
+        region_start_page..=region_end_page
+    };
+
+    for page in page_range {
+        unsafe {
+            get_active_l4_table(VirtAddr::new(*PHYS_OFFSET.get()))
+                .update_flags(
+                    page,
+                    PageTableFlags::PRESENT
+                        | PageTableFlags::WRITABLE
+                        | PageTableFlags::NO_EXECUTE
+                        | PageTableFlags::WRITE_THROUGH
+                        | PageTableFlags::NO_CACHE,
+                )
+                .unwrap()
+                .flush();
+        }
+    }
+
     DISPLAY.init_once(|| Mutex::new(Display::new(framebuffer)));
 }
 

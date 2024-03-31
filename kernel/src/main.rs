@@ -12,7 +12,6 @@ use core::panic::PanicInfo;
 use bootloader_api::{entry_point, BootInfo};
 use kernel::{
     display,
-    framebuffer::DISPLAY,
     keyboard::print_keypresses,
     println,
     qemu::exit_qemu,
@@ -45,10 +44,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
     spawn(print_keypresses());
 
-    spawn(async {
-        let mut display = DISPLAY.get().spin_lock();
-        display::clock::draw_clock(display.as_mut()).await;
-    });
+    spawn(display::clock::draw_clock());
 
     #[cfg(test)]
     test_main();
