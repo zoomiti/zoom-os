@@ -28,7 +28,7 @@ pub const INTERRUPT_START: u8 = 32;
 
 fn notify_end_of_interrupt() {
     //unsafe { PICS.spin_lock().notify_end_of_interrupt(index.into()) }
-    unsafe { LAPIC.get().unwrap().spin_lock().end_of_interrupt() }
+    unsafe { LAPIC.get().spin_lock().end_of_interrupt() }
 }
 
 #[derive(Debug, Clone, Copy, IntoPrimitive)]

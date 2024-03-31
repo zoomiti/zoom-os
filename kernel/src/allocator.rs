@@ -22,17 +22,14 @@ mod linked_list;
 static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
     let mut alloc = Mutex::new(FixedSizeBlockAllocator::new());
     let page_range = {
-        let heap_start = *KERNEL_HEAP_ADDR.get().unwrap();
+        let heap_start = *KERNEL_HEAP_ADDR.get();
         let heap_end = heap_start + KERNEL_HEAP_LEN as u64 - 1u64;
         let heap_start_page = Page::containing_address(heap_start);
         let heap_end_page = Page::containing_address(heap_end);
         heap_start_page..=heap_end_page
     };
 
-    let mut page_alloc = PAGE_ALLOCATOR
-        .get()
-        .expect("should exist by now")
-        .spin_lock();
+    let mut page_alloc = PAGE_ALLOCATOR.get().spin_lock();
     for page in page_range {
         let frame = page_alloc.allocate_frame().unwrap();
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
@@ -45,10 +42,9 @@ static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
         }
     }
     unsafe {
-        alloc.get_mut().init(
-            KERNEL_HEAP_ADDR.get().unwrap().as_u64() as usize,
-            KERNEL_HEAP_LEN,
-        );
+        alloc
+            .get_mut()
+            .init(KERNEL_HEAP_ADDR.get().as_u64() as usize, KERNEL_HEAP_LEN);
     }
     alloc
 });

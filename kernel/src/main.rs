@@ -46,7 +46,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     spawn(print_keypresses());
 
     spawn(async {
-        let mut display = DISPLAY.get().unwrap().spin_lock();
+        let mut display = DISPLAY.get().spin_lock();
         display::clock::draw_clock(display.as_mut()).await;
     });
 

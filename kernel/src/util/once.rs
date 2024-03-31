@@ -53,11 +53,11 @@ impl<T> OnceLock<T> {
         self.status.load(Ordering::Acquire) == INIT
     }
 
-    pub fn get(&self) -> Option<&T> {
+    pub fn get(&self) -> &T {
         if self.is_init() {
-            Some(unsafe { self.get_unchecked() })
+            unsafe { self.get_unchecked() }
         } else {
-            None
+            panic!("Tried to access uninit OnceLock")
         }
     }
 
@@ -233,27 +233,40 @@ impl<T: fmt::Display, F: FnOnce() -> T> fmt::Display for Lazy<T, F> {
 #[cfg(test)]
 mod test {
 
+    use crate::util::once::TryGetError;
+
     use super::{Lazy, OnceLock};
 
     #[test_case]
     fn get_init_once() {
         let once = OnceLock::new();
-        assert_eq!(once.get(), None);
         let res = once.try_init_once(|| 4);
         assert!(res.is_ok());
-        assert_eq!(once.get(), Some(&4));
+        assert_eq!(once.get(), &4);
         let res = once.try_init_once(|| 5);
         assert!(res.is_err());
-        assert_eq!(once.get(), Some(&4));
+        assert_eq!(once.get(), &4);
+    }
+
+    #[test_case]
+    fn try_get() {
+        let once = OnceLock::new();
+        assert_eq!(once.try_get(), Err(TryGetError::Uninitialized));
+        let res = once.try_init_once(|| 4);
+        assert!(res.is_ok());
+        assert_eq!(once.try_get(), Ok(&4));
+        let res = once.try_init_once(|| 5);
+        assert!(res.is_err());
+        assert_eq!(once.try_get(), Ok(&4));
     }
 
     #[test_case]
     fn with_value() {
         let once = OnceLock::with_value(5);
-        assert_eq!(once.get(), Some(&5));
+        assert_eq!(once.get(), &5);
         let res = once.try_init_once(|| 4);
         assert!(res.is_err());
-        assert_eq!(once.get(), Some(&5));
+        assert_eq!(once.get(), &5);
     }
 
     #[test_case]

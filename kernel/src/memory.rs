@@ -18,8 +18,8 @@ use crate::{
 pub static PAGE_ALLOCATOR: OnceLock<Mutex<BootInfoFrameAllocator>> = OnceLock::new();
 
 pub static MAPPER: Lazy<Mutex<OffsetPageTable>> = Lazy::new(|| {
-    let phys_mem_offset = VirtAddr::new(*PHYS_OFFSET.get().expect("Should be init"));
-    unsafe { Mutex::new(init_offset_table(phys_mem_offset)) }
+    let phys_mem_offset = VirtAddr::new(*PHYS_OFFSET.get());
+    unsafe { Mutex::new(get_active_l4_table(phys_mem_offset)) }
 });
 
 pub fn init(memory_regions: &'static MemoryRegions) -> Result<(), TryInitError> {
