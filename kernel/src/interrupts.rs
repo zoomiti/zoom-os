@@ -15,7 +15,8 @@ use crate::{
     gdt,
     keyboard::add_scancode,
     pic::PICS,
-    println, rtc,
+    println,
+    rtc::RTC,
     util::{
         once::Lazy,
         r#async::sleep_future::{wake_sleep, MONOTONIC_TIME},
@@ -149,7 +150,7 @@ extern "x86-interrupt" fn clock_interrupt_handler(_stack_frame: InterruptStackFr
     let curr_time = MONOTONIC_TIME.fetch_add(1, Ordering::Acquire);
     wake_sleep(curr_time);
     notify_end_of_interrupt(InterruptIndex::Clock);
-    rtc::clear_interrup_mask();
+    RTC.spin_lock().clear_interrup_mask();
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {

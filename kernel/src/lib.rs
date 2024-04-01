@@ -27,7 +27,6 @@ pub mod task;
 pub mod testing;
 pub mod tracer;
 pub mod util;
-// Deprecated since new version of bootloader
 //pub mod vga_buffer;
 
 use ::acpi::InterruptModel;
@@ -37,7 +36,7 @@ use apic::{KERNEL_APIC_ADDR, KERNEL_APIC_LEN};
 #[cfg(test)]
 use bootloader_api::entry_point;
 use bootloader_api::{config::Mapping, BootInfo, BootloaderConfig};
-use tracing::{info, span, trace, Level};
+use tracing::{span, trace, Level};
 use util::once::OnceLock;
 use x86_64::{
     structures::paging::{Page, Size4KiB},
@@ -48,12 +47,6 @@ pub static PHYS_OFFSET: OnceLock<u64> = OnceLock::new();
 
 pub static KERNEL_CODE_ADDR: OnceLock<VirtAddr> = OnceLock::new();
 pub static KERNEL_CODE_LEN: OnceLock<usize> = OnceLock::new();
-
-#[test_case]
-fn test_breakpoint_exception() {
-    x86_64::instructions::interrupts::int3();
-    // Execution should continue
-}
 
 pub fn init(boot_info: &'static mut BootInfo) {
     let kernel_code_addr = VirtAddr::new(boot_info.kernel_image_offset);
@@ -87,6 +80,8 @@ pub fn init(boot_info: &'static mut BootInfo) {
     PHYS_OFFSET.init_once(|| phys_offset);
 
     memory::init(&boot_info.memory_regions).expect("page alloc failed to be created");
+    // I don't really want to support a target with no display
+    framebuffer::init(boot_info.framebuffer.as_mut().unwrap());
     tracer::init();
     let init_span = span!(Level::TRACE, "init");
     let _guard = init_span.enter();
@@ -109,9 +104,6 @@ pub fn init(boot_info: &'static mut BootInfo) {
     }
     rtc::init();
     trace!("init rtc");
-    // I don't really want to support a target with no display
-    framebuffer::init(boot_info.framebuffer.as_mut().unwrap());
-    info!("init framebuffer");
 
     //x86_64::instructions::interrupts::enable();
 }
@@ -134,4 +126,10 @@ pub fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
     init(boot_info); // new
     test_main();
     hlt_loop()
+}
+
+#[test_case]
+fn test_breakpoint_exception() {
+    x86_64::instructions::interrupts::int3();
+    // Execution should continue
 }

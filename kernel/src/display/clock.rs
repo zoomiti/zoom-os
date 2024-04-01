@@ -8,7 +8,7 @@ use embedded_graphics::{
 };
 use libm::{cosf, sinf};
 
-use crate::{framebuffer::DISPLAY, rtc::read_date_time, util::r#async::sleep};
+use crate::{framebuffer::DISPLAY, rtc::RTC, util::r#async::sleep};
 
 const MARGIN: u32 = 50;
 
@@ -23,13 +23,13 @@ pub async fn draw_clock() {
     let clock_face = Circle::with_center(bounding_box.center(), diameter);
     target.clear(Rgb888::BLACK);
     draw_face(target, &clock_face);
-    let mut last_time = read_date_time().time();
     drop(disp);
+    let mut last_time = RTC.lock().await.read_date_time().time();
     let mut first = true;
     loop {
         let mut disp = DISPLAY.get().lock().await;
         let target = disp.as_mut();
-        let time = read_date_time().time();
+        let time = RTC.lock().await.read_date_time().time();
         //info!(%time);
 
         if time == last_time {

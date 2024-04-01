@@ -1,28 +1,25 @@
 use core::u16;
 
 use uart_16550::SerialPort;
-use x86_64::instructions::interrupts;
 
-use crate::util::{once::Lazy, r#async::mutex::Mutex};
+use crate::util::{once::Lazy, r#async::mutex::IntMutex};
 
 const SERIAL_ADDR: u16 = 0x3f8;
 
-pub static SERIAL1: Lazy<Mutex<SerialPort>> = Lazy::new(|| {
+pub static SERIAL1: Lazy<IntMutex<SerialPort>> = Lazy::new(|| {
     let mut serial_port = unsafe { SerialPort::new(SERIAL_ADDR) };
     serial_port.init();
-    Mutex::new(serial_port)
+    IntMutex::new(serial_port)
 });
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
 
-    interrupts::without_interrupts(|| {
-        SERIAL1
-            .spin_lock()
-            .write_fmt(args)
-            .expect("Printing to serial failed");
-    })
+    SERIAL1
+        .spin_lock()
+        .write_fmt(args)
+        .expect("Printing to serial failed");
 }
 
 /// Prints to the host through the serial interface.

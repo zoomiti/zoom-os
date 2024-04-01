@@ -8,7 +8,7 @@ use crate::{
     memory::{MAPPER, PAGE_ALLOCATOR},
     util::{
         once::{Lazy, OnceLock},
-        r#async::mutex::Mutex,
+        r#async::mutex::IntMutex,
     },
 };
 
@@ -19,8 +19,8 @@ mod linked_list;
 
 #[global_allocator]
 //static ALLOCATOR: LockedHeap = LockedHeap::empty();
-static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
-    let mut alloc = Mutex::new(FixedSizeBlockAllocator::new());
+static ALLOCATOR: Lazy<IntMutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
+    let mut alloc = IntMutex::new(FixedSizeBlockAllocator::new());
     let page_range = {
         let heap_start = *KERNEL_HEAP_ADDR.get();
         let heap_end = heap_start + KERNEL_HEAP_LEN as u64 - 1u64;

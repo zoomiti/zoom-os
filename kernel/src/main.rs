@@ -9,13 +9,21 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 
+use alloc::string::ToString;
 use bootloader_api::{entry_point, BootInfo};
+use embedded_graphics::{
+    mono_font::{ascii::FONT_9X15, MonoTextStyle},
+    pixelcolor::Rgb888,
+    prelude::*,
+    text::{Baseline, Text},
+};
 use kernel::{
     display,
+    framebuffer::DISPLAY,
     keyboard::print_keypresses,
     println,
     qemu::exit_qemu,
-    rtc,
+    rtc::RTC,
     task::{run, spawn},
     BOOTLOADER_CONFIG,
 };
@@ -28,6 +36,21 @@ fn panic(info: &PanicInfo) -> ! {
     } else {
         println!("{}", info);
     }
+    if let Ok(disp) = DISPLAY.try_get() {
+        // This is safe because we are literally shutting down
+        // No one else should be writing to it.
+        unsafe { disp.force_unlock() };
+        let mut disp = disp.spin_lock();
+        let _ = disp.clear(Rgb888::BLACK);
+        let info = info.to_string();
+        let text = Text::with_baseline(
+            &info,
+            Point::zero(),
+            MonoTextStyle::new(&FONT_9X15, Rgb888::RED),
+            Baseline::Top,
+        );
+        let _ = text.draw(disp.as_mut());
+    }
     exit_qemu(kernel::qemu::QemuExitCode::Failed);
     loop {}
 }
@@ -39,7 +62,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let main_span = span!(Level::TRACE, "kernel_main");
     let _span = main_span.enter();
 
-    let utc_date = rtc::read_date_time();
+    let utc_date = RTC.spin_lock().read_date_time();
     info!(%utc_date);
 
     spawn(print_keypresses());
