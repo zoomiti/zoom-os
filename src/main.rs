@@ -1,6 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::{
-    default, env,
+    env,
     process::{self, Command},
 };
 
