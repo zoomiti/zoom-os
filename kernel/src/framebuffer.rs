@@ -13,9 +13,8 @@ use x86_64::{
 };
 
 use crate::{
-    memory::get_active_l4_table,
+    memory::MAPPER,
     util::{once::OnceLock, r#async::mutex::Mutex},
-    PHYS_OFFSET,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +46,8 @@ pub fn init(framebuffer: &'static mut FrameBuffer) {
 
     for page in page_range {
         unsafe {
-            get_active_l4_table(VirtAddr::new(*PHYS_OFFSET.get()))
+            MAPPER
+                .spin_lock()
                 .update_flags(
                     page,
                     PageTableFlags::PRESENT
