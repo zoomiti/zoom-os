@@ -1,10 +1,12 @@
-use core::ptr::addr_of;
+use core::{ptr::addr_of, usize};
 
+use alloc::vec;
 use bootloader_api::info::{FrameBuffer, FrameBufferInfo, PixelFormat};
 use embedded_graphics::{
     draw_target::DrawTarget,
-    geometry::{Dimensions, OriginDimensions, Size},
+    geometry::{Dimensions, OriginDimensions, Point, Size},
     pixelcolor::{Rgb888, RgbColor},
+    primitives::Rectangle,
     Pixel,
 };
 use x86_64::{
@@ -14,10 +16,7 @@ use x86_64::{
 
 use crate::{
     memory::MAPPER,
-    util::{
-        once::OnceLock,
-        r#async::mutex::{IntMutex, Mutex},
-    },
+    util::{once::OnceLock, r#async::mutex::Mutex},
     vga_buffer::{Writer, WRITER},
 };
 
@@ -81,7 +80,7 @@ pub fn init(framebuffer: &'static mut FrameBuffer) {
         }
     }
 
-    WRITER.init_once(|| IntMutex::new(Writer::new(framebuffer.info())));
+    WRITER.init_once(|| Mutex::new(Writer::new(framebuffer.info())));
 
     DISPLAY.init_once(|| Mutex::new(Display::new(framebuffer)));
 }
@@ -95,23 +94,18 @@ impl<'f> Display<'f> {
         Display { framebuffer }
     }
 
+    #[inline(always)]
     pub fn get_info(&self) -> FrameBufferInfo {
         self.framebuffer.info()
     }
 
     #[inline(always)]
-    fn draw_pixel(&mut self, Pixel(coordinates, color): Pixel<Rgb888>) {
+    fn draw_pixel(&mut self, Pixel(Point { x, y }, color): Pixel<Rgb888>) {
         // ignore any out of bounds pixels
-        let (width, height) = {
-            let info = self.framebuffer.info();
+        let info = self.framebuffer.info();
+        let (width, height) = { (info.width, info.height) };
 
-            (info.width, info.height)
-        };
-
-        let (x, y) = {
-            let c: (i32, i32) = coordinates.into();
-            (c.0 as usize, c.1 as usize)
-        };
+        let (x, y) = { (x as usize, y as usize) };
 
         if (0..width).contains(&x) && (0..height).contains(&y) {
             let color = Color {
@@ -120,44 +114,37 @@ impl<'f> Display<'f> {
                 blue: color.b(),
             };
 
-            set_pixel_in(self.framebuffer, Position { x, y }, color);
-        }
-    }
-}
+            // calculate offset to first byte of pixel
+            let byte_offset = {
+                // use stride to calculate pixel offset of target line
+                let line_offset = y * info.stride;
+                // add x position to get the absolute pixel offset in buffer
+                let pixel_offset = line_offset + x;
+                // convert to byte offset
+                pixel_offset * info.bytes_per_pixel
+            };
 
-#[inline(always)]
-pub fn set_pixel_in(framebuffer: &mut FrameBuffer, position: Position, color: Color) {
-    let info = framebuffer.info();
-
-    // calculate offset to first byte of pixel
-    let byte_offset = {
-        // use stride to calculate pixel offset of target line
-        let line_offset = position.y * info.stride;
-        // add x position to get the absolute pixel offset in buffer
-        let pixel_offset = line_offset + position.x;
-        // convert to byte offset
-        pixel_offset * info.bytes_per_pixel
-    };
-
-    // set pixel based on color format
-    let pixel_buffer = &mut framebuffer.buffer_mut()[byte_offset..];
-    match info.pixel_format {
-        PixelFormat::Rgb => {
-            pixel_buffer[0] = color.red;
-            pixel_buffer[1] = color.green;
-            pixel_buffer[2] = color.blue;
+            // set pixel based on color format
+            let pixel_buffer = &mut self.framebuffer.buffer_mut()[byte_offset..];
+            match info.pixel_format {
+                PixelFormat::Rgb => {
+                    pixel_buffer[0] = color.red;
+                    pixel_buffer[1] = color.green;
+                    pixel_buffer[2] = color.blue;
+                }
+                PixelFormat::Bgr => {
+                    pixel_buffer[0] = color.blue;
+                    pixel_buffer[1] = color.green;
+                    pixel_buffer[2] = color.red;
+                }
+                PixelFormat::U8 => {
+                    // use a simple average-based grayscale transform
+                    let gray = color.red / 3 + color.green / 3 + color.blue / 3;
+                    pixel_buffer[0] = gray;
+                }
+                other => panic!("unknown pixel format {other:?}"),
+            }
         }
-        PixelFormat::Bgr => {
-            pixel_buffer[0] = color.blue;
-            pixel_buffer[1] = color.green;
-            pixel_buffer[2] = color.red;
-        }
-        PixelFormat::U8 => {
-            // use a simple average-based grayscale transform
-            let gray = color.red / 3 + color.green / 3 + color.blue / 3;
-            pixel_buffer[0] = gray;
-        }
-        other => panic!("unknown pixel format {other:?}"),
     }
 }
 
@@ -168,7 +155,7 @@ impl<'f> DrawTarget for Display<'f> {
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
-        I: IntoIterator<Item = embedded_graphics::prelude::Pixel<Self::Color>>,
+        I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for pixel in pixels {
             self.draw_pixel(pixel);
@@ -182,16 +169,89 @@ impl<'f> DrawTarget for Display<'f> {
         color: Self::Color,
     ) -> Result<(), Self::Error> {
         let intersection = self.bounding_box().intersection(area);
+        if intersection == Rectangle::zero() {
+            return Ok(());
+        }
+
+        let color: Color = color.into();
+        let info = self.framebuffer.info();
+        let range = intersection.columns();
+        let width = (range.end - range.start) as usize;
+
+        let vec: alloc::vec::Vec<u32>;
+        let vec2: alloc::vec::Vec<u8>;
+
+        let wide = match info.pixel_format {
+            PixelFormat::Rgb => {
+                let color =
+                    color.red as u32 | (color.green as u32) << 8 | (color.blue as u32) << 16;
+                debug_assert_eq!(info.bytes_per_pixel, 4);
+                vec = vec![color; width];
+                vec.as_ptr() as *const u8
+            }
+            PixelFormat::Bgr => {
+                let color =
+                    color.blue as u32 | (color.green as u32) << 8 | (color.red as u32) << 16;
+                debug_assert_eq!(info.bytes_per_pixel, 4);
+                vec = vec![color; width];
+                vec.as_ptr() as *const u8
+            }
+            PixelFormat::U8 => {
+                let gray = color.red / 3 + color.green / 3 + color.blue / 3;
+                debug_assert_eq!(info.bytes_per_pixel, 1);
+                vec2 = vec![gray; width];
+                vec2.as_ptr()
+            }
+            _ => todo!(),
+        };
+        let x = range.start as usize;
+
         for y in intersection.rows() {
-            for x in intersection.columns() {
-                set_pixel_in(
-                    self.framebuffer,
-                    Position {
-                        x: x as usize,
-                        y: y as usize,
-                    },
-                    color.into(),
-                );
+            let offset = (y as usize * info.stride + x) * info.bytes_per_pixel;
+            unsafe {
+                let addr = self.framebuffer.buffer_mut().as_mut_ptr().add(offset);
+                core::ptr::copy_nonoverlapping(wide, addr, width * info.bytes_per_pixel);
+            }
+        }
+        Ok(())
+    }
+
+    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        let color: Color = color.into();
+        let info = self.get_info();
+
+        let vec: alloc::vec::Vec<u32>;
+        let vec2: alloc::vec::Vec<u8>;
+
+        let wide = match info.pixel_format {
+            PixelFormat::Rgb => {
+                let color =
+                    color.red as u32 | (color.green as u32) << 8 | (color.blue as u32) << 16;
+                debug_assert_eq!(info.bytes_per_pixel, 4);
+                vec = vec![color; info.width];
+                vec.as_ptr() as *const u8
+            }
+            PixelFormat::Bgr => {
+                let color =
+                    color.blue as u32 | (color.green as u32) << 8 | (color.red as u32) << 16;
+                debug_assert_eq!(info.bytes_per_pixel, 4);
+                vec = vec![color; info.width];
+                vec.as_ptr() as *const u8
+            }
+            PixelFormat::U8 => {
+                let gray = color.red / 3 + color.green / 3 + color.blue / 3;
+                debug_assert_eq!(info.bytes_per_pixel, 1);
+                vec2 = vec![gray; info.width];
+                vec2.as_ptr()
+            }
+            _ => todo!(),
+        };
+
+        for y in 0..info.height {
+            let offset = (y * info.stride) * info.bytes_per_pixel;
+            unsafe {
+                let addr = self.framebuffer.buffer_mut().as_mut_ptr().add(offset);
+                core::ptr::copy_nonoverlapping(wide, addr, info.width * info.bytes_per_pixel);
             }
         }
         Ok(())
