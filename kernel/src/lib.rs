@@ -104,12 +104,10 @@ pub fn init(boot_info: &'static mut BootInfo) {
         trace!("init apic");
     } else {
         pic::init();
-        trace!("no apic legacy pic mode");
+        trace!("no apic, legacy pic mode init");
     }
     rtc::init();
     trace!("init rtc");
-
-    //x86_64::instructions::interrupts::enable();
 }
 
 pub const BOOTLOADER_CONFIG: BootloaderConfig = {
