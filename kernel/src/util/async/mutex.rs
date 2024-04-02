@@ -12,6 +12,8 @@ use futures::Future;
 use tracing::trace;
 use x86_64::instructions::interrupts;
 
+use crate::println;
+
 use super::waker_list::WakerList;
 
 #[derive(Default)]
@@ -199,7 +201,7 @@ impl<T: ?Sized> IntMutex<T> {
             // Acquired lock to add a guard to the count and
             (Some(_), true) => {
                 NUM_GUARDS.fetch_add(1, Ordering::Release);
-                SHOULD_REENABLE.store(true, Ordering::Relaxed);
+                SHOULD_REENABLE.store(true, Ordering::Release);
             }
             _ => (), // Do nothing
         }
@@ -227,8 +229,8 @@ impl<T: ?Sized> IntMutex<T> {
                 return lock;
             }
             if first {
+                println!("spinning");
                 first = false;
-                trace!("spinning");
             }
             core::hint::spin_loop();
         }
