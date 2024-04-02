@@ -3,7 +3,7 @@ use core::{
     task::{Context, Poll},
 };
 
-use crate::{print, util::once::OnceLock};
+use crate::{util::once::OnceLock, vga_print};
 use crossbeam_queue::ArrayQueue;
 use futures::{task::AtomicWaker, Stream, StreamExt};
 use pc_keyboard::{layouts, Keyboard, ScancodeSet1};
@@ -76,7 +76,7 @@ pub async fn print_keypresses() {
                 match key {
                     pc_keyboard::DecodedKey::RawKey(_) => {}
                     pc_keyboard::DecodedKey::Unicode(character) => {
-                        print!("{}", character);
+                        vga_print!("{}", character);
                     }
                 }
             }

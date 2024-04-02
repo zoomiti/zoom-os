@@ -8,7 +8,7 @@ use alloc::{
 use tracing::{field::Visit, info, span, subscriber::set_global_default, Subscriber};
 use x86_64::instructions::interrupts;
 
-use crate::{print, println, util::r#async::mutex::Mutex};
+use crate::{print, println, util::r#async::mutex::Mutex, vga_print, vga_println};
 
 pub fn init() {
     set_global_default(SimpleLogger::default()).expect("Couldn't initialize logging");
@@ -20,8 +20,10 @@ pub struct SerialVisitor;
 impl Visit for SerialVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         if field.name() == "message" {
+            vga_print!("{value:?} ");
             print!("{value:?} ");
         } else {
+            vga_print!("{} = {:?}, ", field.name(), value);
             print!("{} = {:?}, ", field.name(), value);
         }
     }
@@ -84,8 +86,10 @@ impl Subscriber for SimpleLogger {
         });
 
         print!("[{level}] {target}{stack}");
+        vga_print!("[{level}] {target}{stack}");
         event.record(&mut SerialVisitor);
         println!();
+        vga_println!();
     }
 
     fn enter(&self, span: &span::Id) {

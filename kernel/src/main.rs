@@ -7,7 +7,7 @@
 
 extern crate alloc;
 
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, time::Duration};
 
 use alloc::string::ToString;
 use bootloader_api::{entry_point, BootInfo};
@@ -18,14 +18,14 @@ use embedded_graphics::{
     text::{Baseline, Text},
 };
 use kernel::{
-    display,
     framebuffer::DISPLAY,
     keyboard::print_keypresses,
     println,
     qemu::exit_qemu,
     rtc::RTC,
     task::{run, spawn},
-    BOOTLOADER_CONFIG,
+    util::r#async::sleep,
+    vga_println, BOOTLOADER_CONFIG,
 };
 use tracing::{error, info, span, Level};
 
@@ -67,12 +67,16 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
     spawn(print_keypresses());
 
-    spawn(display::clock::draw_clock());
+    spawn(async {
+        sleep(Duration::from_secs(10)).await;
+        kernel::display::clock::draw_clock().await;
+    });
 
     #[cfg(test)]
     test_main();
 
     println!("Hello World{}", "!");
+    vga_println!("Hello World!");
 
     run()
 }

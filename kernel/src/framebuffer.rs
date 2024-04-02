@@ -1,9 +1,9 @@
 use core::ptr::addr_of;
 
-use bootloader_api::info::{FrameBuffer, PixelFormat};
+use bootloader_api::info::{FrameBuffer, FrameBufferInfo, PixelFormat};
 use embedded_graphics::{
     draw_target::DrawTarget,
-    geometry::{OriginDimensions, Size},
+    geometry::{Dimensions, OriginDimensions, Size},
     pixelcolor::{Rgb888, RgbColor},
     Pixel,
 };
@@ -14,7 +14,11 @@ use x86_64::{
 
 use crate::{
     memory::MAPPER,
-    util::{once::OnceLock, r#async::mutex::Mutex},
+    util::{
+        once::OnceLock,
+        r#async::mutex::{IntMutex, Mutex},
+    },
+    vga_buffer::{Writer, WRITER},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +32,22 @@ pub struct Color {
     pub red: u8,
     pub green: u8,
     pub blue: u8,
+}
+
+impl From<Color> for Rgb888 {
+    fn from(value: Color) -> Self {
+        Rgb888::new(value.red, value.green, value.blue)
+    }
+}
+
+impl From<Rgb888> for Color {
+    fn from(value: Rgb888) -> Self {
+        Color {
+            red: value.r(),
+            green: value.g(),
+            blue: value.b(),
+        }
+    }
 }
 
 pub static DISPLAY: OnceLock<Mutex<Display<'static>>> = OnceLock::new();
@@ -61,6 +81,8 @@ pub fn init(framebuffer: &'static mut FrameBuffer) {
         }
     }
 
+    WRITER.init_once(|| IntMutex::new(Writer::new(framebuffer.info())));
+
     DISPLAY.init_once(|| Mutex::new(Display::new(framebuffer)));
 }
 
@@ -73,6 +95,11 @@ impl<'f> Display<'f> {
         Display { framebuffer }
     }
 
+    pub fn get_info(&self) -> FrameBufferInfo {
+        self.framebuffer.info()
+    }
+
+    #[inline(always)]
     fn draw_pixel(&mut self, Pixel(coordinates, color): Pixel<Rgb888>) {
         // ignore any out of bounds pixels
         let (width, height) = {
@@ -98,6 +125,7 @@ impl<'f> Display<'f> {
     }
 }
 
+#[inline(always)]
 pub fn set_pixel_in(framebuffer: &mut FrameBuffer, position: Position, color: Color) {
     let info = framebuffer.info();
 
@@ -144,6 +172,27 @@ impl<'f> DrawTarget for Display<'f> {
     {
         for pixel in pixels {
             self.draw_pixel(pixel);
+        }
+        Ok(())
+    }
+
+    fn fill_solid(
+        &mut self,
+        area: &embedded_graphics::primitives::Rectangle,
+        color: Self::Color,
+    ) -> Result<(), Self::Error> {
+        let intersection = self.bounding_box().intersection(area);
+        for y in intersection.rows() {
+            for x in intersection.columns() {
+                set_pixel_in(
+                    self.framebuffer,
+                    Position {
+                        x: x as usize,
+                        y: y as usize,
+                    },
+                    color.into(),
+                );
+            }
         }
         Ok(())
     }
