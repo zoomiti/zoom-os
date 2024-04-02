@@ -54,15 +54,37 @@ impl Rtc {
     }
     #[instrument]
     pub fn read_date_time(&mut self) -> NaiveDateTime {
+        loop {
+            if let Ok(time) = self.try_read_date_time() {
+                return time;
+            }
+            core::hint::spin_loop();
+        }
+    }
+
+    pub fn try_read_date_time(&mut self) -> Result<NaiveDateTime, FromNaiveDateTimeError> {
         self.update_guarded_op(|rtc_ref| {
-            let seconds = rtc_ref.read_cmos_reg(0x00);
-            let minutes = rtc_ref.read_cmos_reg(0x02);
-            let hours = rtc_ref.read_cmos_reg(0x04);
+            let mut seconds = rtc_ref.read_cmos_reg(0x00);
+            let mut minutes = rtc_ref.read_cmos_reg(0x02);
+            let mut hours = rtc_ref.read_cmos_reg(0x04);
             let weekday = rtc_ref.read_cmos_reg(0x06);
-            let day = rtc_ref.read_cmos_reg(0x07);
-            let month = rtc_ref.read_cmos_reg(0x08);
-            let year = rtc_ref.read_cmos_reg(0x09);
-            let century = rtc_ref.read_cmos_reg(0x32);
+            let mut day = rtc_ref.read_cmos_reg(0x07);
+            let mut month = rtc_ref.read_cmos_reg(0x08);
+            let mut year = rtc_ref.read_cmos_reg(0x09);
+            let mut century = rtc_ref.read_cmos_reg(0x32);
+
+            // Convert BCD to binary values if necessary
+            // It shouldn't be, because by now we configured RTC but it seems necessary regardless
+            let register_b = rtc_ref.read_cmos_reg(0x0B);
+            if register_b & 0x04 == 0 {
+                seconds = (seconds & 0x0F) + ((seconds / 16) * 10);
+                minutes = (minutes & 0x0F) + ((minutes / 16) * 10);
+                hours = ((hours & 0x0F) + (((hours & 0x70) / 16) * 10)) | (hours & 0x80);
+                day = (day & 0x0F) + ((day / 16) * 10);
+                month = (month & 0x0F) + ((month / 16) * 10);
+                year = (year & 0x0F) + ((year / 16) * 10);
+                century = (century & 0x0F) + ((century / 16) * 10);
+            }
 
             RTCDateTime {
                 seconds,
@@ -75,9 +97,9 @@ impl Rtc {
                 century,
             }
             .try_into()
-            .unwrap()
         })
     }
+
     fn select_reg(&mut self, reg: u8) {
         // This is the first operation in any handling of rtc so this should always check if
         // interrupts are disable before doing rtc stuff
