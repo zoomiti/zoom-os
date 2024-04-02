@@ -27,7 +27,7 @@ pub mod task;
 pub mod testing;
 pub mod tracer;
 pub mod util;
-//pub mod vga_buffer;
+pub mod vga_buffer;
 
 use ::acpi::InterruptModel;
 use acpi::{KERNEL_ACPI_ADDR, KERNEL_ACPI_LEN};
@@ -36,12 +36,15 @@ use apic::{KERNEL_APIC_ADDR, KERNEL_APIC_LEN};
 #[cfg(test)]
 use bootloader_api::entry_point;
 use bootloader_api::{config::Mapping, BootInfo, BootloaderConfig};
+use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
 use tracing::{span, trace, Level};
 use util::once::OnceLock;
 use x86_64::{
     structures::paging::{Page, Size4KiB},
     VirtAddr,
 };
+
+use crate::framebuffer::DISPLAY;
 
 pub static PHYS_OFFSET: OnceLock<u64> = OnceLock::new();
 
@@ -82,6 +85,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     memory::init(&boot_info.memory_regions).expect("page alloc failed to be created");
     // I don't really want to support a target with no display
     framebuffer::init(boot_info.framebuffer.as_mut().unwrap());
+    let _ = DISPLAY.get().spin_lock().as_mut().clear(Rgb888::BLACK);
     tracer::init();
     let init_span = span!(Level::TRACE, "init");
     let _guard = init_span.enter();
