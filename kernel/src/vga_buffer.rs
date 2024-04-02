@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-use alloc::format;
 use bootloader_api::info::FrameBufferInfo;
-use core::fmt;
+use core::str;
+use core::{fmt, slice};
 use embedded_graphics::{mono_font::MonoTextStyle, pixelcolor::Rgb888, prelude::*, text::Text};
 
 use crate::{
@@ -41,9 +41,11 @@ impl Writer {
                     let _ = DISPLAY.get().spin_lock().clear(Rgb888::BLACK);
                 }
 
-                let text = format!("{}", byte as char);
+                // Safe because we should only be getting ascii
+                let slice = unsafe { slice::from_raw_parts(&byte as *const u8, 1) };
+                let text = unsafe { str::from_utf8_unchecked(slice) };
                 let text = Text::with_baseline(
-                    &text,
+                    text,
                     embedded_graphics::geometry::Point {
                         x: self.x_pos as i32,
                         y: self.y_pos as i32,
