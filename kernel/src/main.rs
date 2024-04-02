@@ -51,7 +51,7 @@ fn panic(info: &PanicInfo) -> ! {
         );
         let _ = text.draw(disp.as_mut());
     }
-    exit_qemu(kernel::qemu::QemuExitCode::Failed);
+    //exit_qemu(kernel::qemu::QemuExitCode::Failed);
     loop {}
 }
 
