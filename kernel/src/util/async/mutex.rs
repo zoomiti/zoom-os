@@ -3,7 +3,7 @@ use core::{
     fmt::Debug,
     ops::{Deref, DerefMut},
     pin::Pin,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     task::{Context, Poll},
 };
 
@@ -174,6 +174,9 @@ impl Future for MutexLocker<'_> {
     }
 }
 
+static NUM_GUARDS: AtomicUsize = AtomicUsize::new(0);
+static SHOULD_REENABLE: AtomicBool = AtomicBool::new(false);
+
 #[derive(Default)]
 pub struct IntMutex<T: ?Sized>(Mutex<T>);
 
@@ -186,14 +189,19 @@ impl<T: ?Sized> IntMutex<T> {
     pub fn try_lock(&self) -> Option<IntMutexGuard<'_, T>> {
         let enabled = interrupts::are_enabled();
         if enabled {
-            interrupts::disable()
+            interrupts::disable();
         }
-        let ret = self
-            .0
-            .try_lock()
-            .map(|mg| IntMutexGuard(mg, interrupts::are_enabled()));
-        if ret.is_none() && enabled {
-            interrupts::enable()
+        let ret = self.0.try_lock().map(IntMutexGuard);
+
+        match (&ret, enabled) {
+            // Couldn't acquire lock so reenable;
+            (None, true) => interrupts::enable(),
+            // Acquired lock to add a guard to the count and
+            (Some(_), true) => {
+                NUM_GUARDS.fetch_add(1, Ordering::Release);
+                SHOULD_REENABLE.store(true, Ordering::Relaxed);
+            }
+            _ => (), // Do nothing
         }
 
         ret
@@ -254,7 +262,7 @@ impl<T: ?Sized + Debug> Debug for IntMutex<T> {
     }
 }
 
-pub struct IntMutexGuard<'t, T: ?Sized>(MutexGuard<'t, T>, bool);
+pub struct IntMutexGuard<'t, T: ?Sized>(MutexGuard<'t, T>);
 unsafe impl<T: ?Sized + Send> Send for IntMutexGuard<'_, T> {}
 unsafe impl<T: Sync> Sync for IntMutexGuard<'_, T> {}
 
@@ -294,7 +302,10 @@ impl<T: ?Sized> AsMut<T> for IntMutexGuard<'_, T> {
 
 impl<T: ?Sized> Drop for IntMutexGuard<'_, T> {
     fn drop(&mut self) {
-        if self.1 {
+        let guards = NUM_GUARDS.fetch_sub(1, Ordering::AcqRel);
+        if guards == 1 && SHOULD_REENABLE.load(Ordering::Acquire) {
+            // we were the last
+            SHOULD_REENABLE.store(false, Ordering::Release);
             interrupts::enable();
         }
     }
