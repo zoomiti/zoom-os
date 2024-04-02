@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use thiserror::Error;
 use tracing::instrument;
@@ -7,6 +9,9 @@ use crate::util::r#async::mutex::IntMutex;
 
 const NMI_ENABLE: bool = true;
 
+// rate 3 => 112 uS
+pub const TIMER_PERIOD: Duration = Duration::from_micros(112);
+pub const TIMER_FREQ: usize = 8192;
 pub static RTC: IntMutex<Rtc> = IntMutex::new(Rtc::new());
 
 #[derive(Debug)]
@@ -17,8 +22,10 @@ pub struct Rtc {
 
 pub fn init() {
     let mut rtc = RTC.spin_lock();
-    rtc.enable_interrupts();
     rtc.set_data_format();
+    // OS-DEV says 3 -> 8kHz but it seems like 4 is correct
+    rtc.set_freq(4);
+    rtc.enable_interrupts();
 }
 
 impl Rtc {
@@ -27,6 +34,12 @@ impl Rtc {
             command: Port::new(0x70),
             data: Port::new(0x71),
         }
+    }
+
+    fn set_freq(&mut self, rate: u8) {
+        debug_assert!(rate > 2 && rate < 16);
+        let prev = self.read_cmos_reg(0x8A);
+        self.write_cmos_reg(0x8A, (prev & 0xF0) | rate);
     }
 
     fn enable_interrupts(&mut self) {

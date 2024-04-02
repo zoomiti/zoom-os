@@ -12,12 +12,10 @@ use futures::Future;
 use smallvec::SmallVec;
 use x86_64::instructions::interrupts;
 
-use crate::task::spawn;
+use crate::{rtc::TIMER_FREQ, task::spawn};
 
 use super::mutex::Mutex;
 
-// Actually closer to 54.9254 ms
-pub const TIMER_FREQ: Duration = Duration::from_micros(976);
 pub static MONOTONIC_TIME: AtomicUsize = AtomicUsize::new(0);
 
 // TODO: Fix overflow issue
@@ -62,7 +60,7 @@ pub(crate) fn wake_sleep(tick: usize) {
 
 impl SleepFuture {
     pub fn new(dur: Duration) -> Self {
-        let ticks = dur.as_secs_f64() / TIMER_FREQ.as_secs_f64();
+        let ticks = dur.as_secs_f64() * TIMER_FREQ as f64;
         let ticks = ticks as usize;
         let start = MONOTONIC_TIME.load(Ordering::Relaxed);
         let end_tick = start.wrapping_add(ticks);
