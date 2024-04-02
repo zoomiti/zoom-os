@@ -4,15 +4,19 @@ use core::str;
 use core::{fmt, slice};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle, StyledDrawable};
 use embedded_graphics::{mono_font::MonoTextStyle, pixelcolor::Rgb888, prelude::*, text::Text};
+use tracing::warn;
 
+use crate::framebuffer::Display;
+use crate::util::r#async::mutex::MutexGuard;
 use crate::{
     framebuffer::DISPLAY,
-    util::{once::OnceLock, r#async::mutex::IntMutex},
+    util::{once::OnceLock, r#async::mutex::Mutex},
 };
 
-pub static WRITER: OnceLock<IntMutex<Writer>> = OnceLock::new();
+pub static WRITER: OnceLock<Mutex<Writer>> = OnceLock::new();
 
 pub struct Writer {
+    buffer: Option<MutexGuard<'static, Display<'static>>>,
     info: FrameBufferInfo,
     x_pos: usize,
     y_pos: usize,
@@ -21,6 +25,7 @@ pub struct Writer {
 impl Writer {
     pub fn new(info: FrameBufferInfo) -> Self {
         Self {
+            buffer: None,
             info,
             x_pos: 0,
             y_pos: 0,
@@ -39,7 +44,7 @@ impl Writer {
                 if new_ypos >= self.info.height {
                     self.x_pos = 0;
                     self.y_pos = 0;
-                    let _ = DISPLAY.get().spin_lock().clear(Rgb888::BLACK);
+                    let _ = self.buffer.as_mut().map(|b| b.clear(Rgb888::BLACK));
                 }
 
                 // Safe because we should only be getting ascii
@@ -57,7 +62,7 @@ impl Writer {
                     ),
                     embedded_graphics::text::Baseline::Top,
                 );
-                let _ = text.draw(DISPLAY.get().spin_lock().as_mut());
+                self.buffer.as_mut().map(|b| text.draw(b.as_mut()));
                 self.x_pos += 9;
             }
         }
@@ -79,10 +84,9 @@ impl Writer {
                 height: 15,
             },
         );
-        let _ = rect.draw_styled(
-            &PrimitiveStyle::with_fill(Rgb888::BLACK),
-            DISPLAY.get().spin_lock().as_mut(),
-        );
+        self.buffer
+            .as_mut()
+            .map(|b| rect.draw_styled(&PrimitiveStyle::with_fill(Rgb888::BLACK), b.as_mut()));
     }
 
     fn new_line(&mut self) {
@@ -126,7 +130,16 @@ macro_rules! vga_println {
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
 
-    if let Ok(writer) = WRITER.try_get() {
-        writer.spin_lock().write_fmt(args).unwrap();
-    }
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        if let Ok(writer) = WRITER.try_get() {
+            if let Some(display) = DISPLAY.get().try_lock() {
+                let mut write = writer.spin_lock();
+                write.buffer.replace(display);
+                write.write_fmt(args).unwrap();
+                write.buffer.take();
+            } else {
+                warn!("Tried to write to screen while someone else is\nAre you sure you meant to?");
+            }
+        }
+    });
 }

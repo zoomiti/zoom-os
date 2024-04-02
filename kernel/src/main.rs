@@ -20,11 +20,12 @@ use embedded_graphics::{
 use kernel::{
     framebuffer::DISPLAY,
     keyboard::print_keypresses,
-    println,
+    loop_yield, print, println,
     qemu::exit_qemu,
     rtc::RTC,
     task::{run, spawn},
-    util::r#async::sleep,
+    tracer::SHOULD_USE_SCREEN,
+    util::r#async::{sleep, yield_now},
     vga_println, BOOTLOADER_CONFIG,
 };
 use tracing::{error, info, span, Level};
@@ -59,6 +60,12 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     kernel::init(boot_info);
+
+    let enabled = x86_64::instructions::interrupts::are_enabled();
+    println!("[INFO] enabled: {}", enabled);
+
+    SHOULD_USE_SCREEN.store(false, core::sync::atomic::Ordering::Relaxed);
+
     let main_span = span!(Level::TRACE, "kernel_main");
     let _span = main_span.enter();
 
@@ -68,7 +75,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     spawn(print_keypresses());
 
     spawn(async {
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(3)).await;
         kernel::display::clock::draw_clock().await;
     });
 
