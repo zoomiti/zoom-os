@@ -1,9 +1,10 @@
 use acpi::platform::interrupt::Apic as ApicInfo;
 use alloc::alloc::Global;
 use thiserror::Error;
+use tracing::instrument;
 use x2apic::{
     ioapic::{IoApic, IrqFlags, RedirectionTableEntry},
-    lapic::{LocalApic, LocalApicBuilder, TimerDivide, TimerMode},
+    lapic::{xapic_base, LocalApic, LocalApicBuilder, TimerDivide, TimerMode},
 };
 use x86_64::{
     addr::PhysAddrNotValid,
@@ -43,11 +44,13 @@ pub enum ApicInitError {
     LapicAlreadyInit(#[from] TryInitError),
 }
 
+#[instrument(err)]
 pub fn init(apic_info: &ApicInfo<'static, Global>) -> Result<(), ApicInitError> {
     disable_8259();
 
     // SETUP LAPIC
-    let apic_phys_addr = apic_info.local_apic_address;
+    let apic_phys_addr = unsafe { xapic_base() };
+    debug_assert_eq!(apic_phys_addr, apic_info.local_apic_address);
     let apic_phys_addr =
         PhysAddr::try_new(apic_phys_addr).map_err(ApicInitError::BadLapicAddress)?;
     let apic_phys_frame = PhysFrame::<Size4KiB>::containing_address(apic_phys_addr);
