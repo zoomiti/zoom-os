@@ -25,7 +25,7 @@ pub async fn draw_clock() {
     draw_face(target, &clock_face);
     drop(disp);
     let mut last_time = RTC.lock().await.read_date_time().time();
-    let mut first = true;
+    //let mut first = true;
     loop {
         let mut disp = DISPLAY.get().lock().await;
         let target = disp.as_mut();
@@ -41,6 +41,10 @@ pub async fn draw_clock() {
         let minutes_radians = sexagesimal_to_angle(time.minute());
         let seconds_radians = sexagesimal_to_angle(time.second());
 
+        target.clear(Rgb888::BLACK);
+
+        draw_face(target, &clock_face);
+
         draw_hand(target, &clock_face, hours_radians, -60, Rgb888::WHITE);
         draw_hand(target, &clock_face, minutes_radians, -30, Rgb888::WHITE);
         draw_hand(target, &clock_face, seconds_radians, 0, Rgb888::WHITE);
@@ -50,27 +54,27 @@ pub async fn draw_clock() {
             .into_styled(PrimitiveStyle::with_fill(Rgb888::WHITE))
             .draw(target);
 
-        if last_time.second() != time.second() {
-            let seconds_radians = sexagesimal_to_angle(last_time.second());
-            draw_hand(target, &clock_face, seconds_radians, 0, Rgb888::BLACK);
-            draw_second_decoration(target, &clock_face, seconds_radians, -20, Rgb888::BLACK);
+        //if last_time.second() != time.second() {
+        //    let seconds_radians = sexagesimal_to_angle(last_time.second());
+        //    draw_hand(target, &clock_face, seconds_radians, 0, Rgb888::BLACK);
+        //    draw_second_decoration(target, &clock_face, seconds_radians, -20, Rgb888::BLACK);
 
-            draw_face(target, &clock_face);
-        }
-        if last_time.minute() != time.minute() {
-            let minutes_radians = sexagesimal_to_angle(last_time.minute());
-            draw_hand(target, &clock_face, minutes_radians, -30, Rgb888::BLACK);
-        }
-        if last_time.hour() != time.hour() {
-            let hours_radians = hour_to_angle(last_time.hour());
-            draw_hand(target, &clock_face, hours_radians, -60, Rgb888::BLACK);
-        }
+        //    draw_face(target, &clock_face);
+        //}
+        //if last_time.minute() != time.minute() {
+        //    let minutes_radians = sexagesimal_to_angle(last_time.minute());
+        //    draw_hand(target, &clock_face, minutes_radians, -30, Rgb888::BLACK);
+        //}
+        //if last_time.hour() != time.hour() {
+        //    let hours_radians = hour_to_angle(last_time.hour());
+        //    draw_hand(target, &clock_face, hours_radians, -60, Rgb888::BLACK);
+        //}
         sleep(Duration::from_millis(50)).await;
 
         last_time = time;
-        if first {
-            first = false;
-        }
+        //if first {
+        //    first = false;
+        //}
     }
 }
 
