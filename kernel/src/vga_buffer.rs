@@ -2,6 +2,7 @@
 use bootloader_api::info::FrameBufferInfo;
 use core::str;
 use core::{fmt, slice};
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle, StyledDrawable};
 use embedded_graphics::{mono_font::MonoTextStyle, pixelcolor::Rgb888, prelude::*, text::Text};
 
 use crate::{
@@ -62,6 +63,28 @@ impl Writer {
         }
     }
 
+    fn backspace(&mut self) {
+        if self.x_pos == 0 {
+            self.y_pos -= 15;
+            self.x_pos = (self.info.stride / 9) * 9;
+        }
+        self.x_pos -= 9;
+        let rect = Rectangle::new(
+            Point {
+                x: self.x_pos as i32,
+                y: self.y_pos as i32,
+            },
+            Size {
+                width: 9,
+                height: 15,
+            },
+        );
+        let _ = rect.draw_styled(
+            &PrimitiveStyle::with_fill(Rgb888::BLACK),
+            DISPLAY.get().spin_lock().as_mut(),
+        );
+    }
+
     fn new_line(&mut self) {
         self.y_pos += 15;
         self.x_pos = 0;
@@ -72,6 +95,8 @@ impl Writer {
             match byte {
                 // printable ASCII byte or newline
                 0x20..=0x7e | b'\n' => self.write_byte(byte),
+                // backspace
+                0x08 => self.backspace(),
                 // not part of printable ASCII range
                 _ => self.write_byte(0xfe),
             }
