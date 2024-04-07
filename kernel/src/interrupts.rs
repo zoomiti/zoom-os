@@ -2,7 +2,7 @@ use core::sync::atomic::Ordering;
 
 use num_enum::IntoPrimitive;
 use raw_cpuid::{CpuId, Hypervisor};
-use tracing::{error, trace};
+use tracing::{error};
 use x86_64::{
     instructions::port::Port,
     structures::idt::{

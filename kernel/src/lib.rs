@@ -88,7 +88,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     let _ = DISPLAY.get().spin_lock().as_mut().clear(Rgb888::BLACK);
 
     tracer::init();
-    let init_span = span!(Level::TRACE, "init");
+    let init_span = span!(Level::TRACE, "kernel_init");
     let _guard = init_span.enter();
 
     gdt::init();

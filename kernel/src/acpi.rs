@@ -30,7 +30,7 @@ pub enum AcpiInitError {
     PlatformInfoError(AcpiError),
 }
 
-#[instrument(err)]
+#[instrument(name = "acpi_init", err)]
 pub fn init(rsdp: u64) -> Result<PlatformInfo<'static, Global>, AcpiInitError> {
     let acpi_tables = match unsafe { AcpiTables::from_rsdp(KernelAcpi::new(), rsdp as usize) } {
         Ok(tables) => tables,

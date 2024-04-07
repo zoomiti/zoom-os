@@ -1,4 +1,5 @@
 use alloc::vec;
+use tracing::instrument;
 use x86_64::{
     instructions::tables::load_tss,
     registers::segmentation::{Segment, CS, DS, SS},
@@ -49,6 +50,7 @@ struct Selectors {
     tss_selector: SegmentSelector,
 }
 
+#[instrument(name = "gdt_init")]
 pub fn init() {
     GDT.0.load();
     unsafe {

@@ -19,13 +19,11 @@ use embedded_graphics::{
 };
 use kernel::{
     framebuffer::DISPLAY,
-    keyboard::print_keypresses,
-    loop_yield, print, println,
-    qemu::exit_qemu,
+    keyboard::print_keypresses, println,
     rtc::RTC,
     task::{run, spawn},
     tracer::SHOULD_USE_SCREEN,
-    util::r#async::{sleep, yield_now},
+    util::r#async::{sleep},
     vga_println, BOOTLOADER_CONFIG,
 };
 use tracing::{error, info, span, Level};

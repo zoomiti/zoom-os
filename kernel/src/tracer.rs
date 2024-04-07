@@ -55,8 +55,8 @@ impl Subscriber for SimpleLogger {
         static ID: AtomicU64 = AtomicU64::new(1);
         let old = ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-        //let mut inner = self.inner.spin_lock();
-        //inner.spans.insert(old, _span.metadata().name());
+        let mut inner = self.inner.spin_lock();
+        inner.spans.insert(old, _span.metadata().name());
         span::Id::from_u64(old)
     }
 
@@ -102,16 +102,12 @@ impl Subscriber for SimpleLogger {
     }
 
     fn enter(&self, span: &span::Id) {
-        /*
-                let mut inner = self.inner.spin_lock();
-                inner.stack.push_back(span.into_non_zero_u64().into());
-        */
+        let mut inner = self.inner.spin_lock();
+        inner.stack.push_back(span.into_non_zero_u64().into());
     }
 
     fn exit(&self, _span: &span::Id) {
-        /*
         let mut inner = self.inner.spin_lock();
         inner.stack.pop_back();
-        */
     }
 }

@@ -8,6 +8,7 @@ use std::{
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
+    /// Boot from UEFI or Bios
     #[arg(short, long, value_enum, default_value = "uefi")]
     boot: BootType,
 }

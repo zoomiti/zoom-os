@@ -1,7 +1,7 @@
 use acpi::platform::interrupt::Apic as ApicInfo;
 use alloc::alloc::Global;
 use thiserror::Error;
-use tracing::instrument;
+use tracing::{instrument, trace};
 use x2apic::{
     ioapic::{IoApic, IrqFlags, RedirectionTableEntry},
     lapic::{xapic_base, LocalApic, LocalApicBuilder, TimerDivide, TimerMode},
@@ -44,7 +44,7 @@ pub enum ApicInitError {
     LapicAlreadyInit(#[from] TryInitError),
 }
 
-#[instrument(err)]
+#[instrument(name = "apic_init", err)]
 pub fn init(apic_info: &ApicInfo<'static, Global>) -> Result<(), ApicInitError> {
     disable_8259();
 
@@ -92,6 +92,7 @@ pub fn init(apic_info: &ApicInfo<'static, Global>) -> Result<(), ApicInitError> 
     // SETUP IOAPIC
     let io_apics = &apic_info.io_apics;
     for io_apic in io_apics.iter() {
+        trace!("Initialize io_apic at: {}", io_apic.address);
         let io_apic_phys_addr = PhysAddr::new(io_apic.address as u64);
 
         // Map io apic
