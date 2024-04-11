@@ -1,4 +1,3 @@
-//use linked_list_allocator::LockedHeap;
 use x86_64::{
     structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags},
     VirtAddr,
@@ -44,7 +43,7 @@ static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
     unsafe {
         alloc
             .get_mut()
-            .init(KERNEL_HEAP_ADDR.get().as_u64() as usize, KERNEL_HEAP_LEN);
+            .init(KERNEL_HEAP_ADDR.get().as_mut_ptr(), KERNEL_HEAP_LEN);
     }
     alloc
 });

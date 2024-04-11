@@ -12,6 +12,18 @@ struct ListNode {
     next: Option<&'static mut ListNode>,
 }
 
+impl ListNode {
+    fn length(&self) -> usize {
+        let mut node = self;
+        let mut count = 1;
+        while let Some(n) = &node.next {
+            count += 1;
+            node = n;
+        }
+        count
+    }
+}
+
 pub struct FixedSizeBlockAllocator {
     list_heads: [Option<&'static mut ListNode>; BLOCK_SIZES.len()],
     fallback_allocator: linked_list_allocator::Heap,
@@ -26,9 +38,8 @@ impl FixedSizeBlockAllocator {
         }
     }
 
-    pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
-        self.fallback_allocator
-            .init(heap_start as *mut u8, heap_size)
+    pub unsafe fn init(&mut self, heap_start: *mut u8, heap_size: usize) {
+        self.fallback_allocator.init(heap_start, heap_size)
     }
 
     /// Allocates using the fallback allocator.
@@ -82,14 +93,21 @@ unsafe impl GlobalAlloc for Lazy<Mutex<FixedSizeBlockAllocator>> {
             let mut alloc = self.get_or_init().spin_lock();
             match list_index(&layout) {
                 Some(index) => {
-                    let new_node = ListNode {
-                        next: alloc.list_heads[index].take(),
-                    };
-                    assert!(mem::size_of::<ListNode>() <= BLOCK_SIZES[index]);
-                    assert!(mem::align_of::<ListNode>() <= BLOCK_SIZES[index]);
-                    let new_node_ptr = ptr as *mut ListNode;
-                    new_node_ptr.write(new_node);
-                    alloc.list_heads[index] = Some(&mut *new_node_ptr);
+                    if let Some(n) = &alloc.list_heads[index]
+                        && n.length() > 16
+                    {
+                        let ptr = NonNull::new(ptr).unwrap();
+                        alloc.fallback_allocator.deallocate(ptr, layout);
+                    } else {
+                        let new_node = ListNode {
+                            next: alloc.list_heads[index].take(),
+                        };
+                        assert!(mem::size_of::<ListNode>() <= BLOCK_SIZES[index]);
+                        assert!(mem::align_of::<ListNode>() <= BLOCK_SIZES[index]);
+                        let new_node_ptr = ptr as *mut ListNode;
+                        new_node_ptr.write(new_node);
+                        alloc.list_heads[index] = Some(&mut *new_node_ptr);
+                    }
                 }
                 None => {
                     let ptr = NonNull::new(ptr).unwrap();
