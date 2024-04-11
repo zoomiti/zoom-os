@@ -7,11 +7,13 @@ use embedded_graphics::{
     primitives::{Circle, Line, PrimitiveStyle, PrimitiveStyleBuilder},
 };
 use libm::{cosf, sinf};
+use tracing::info;
 
 use crate::{framebuffer::DISPLAY, rtc::RTC, util::r#async::sleep};
 
 const MARGIN: u32 = 50;
 
+#[tracing::instrument]
 #[allow(unused_must_use)]
 pub async fn draw_clock() {
     let clock_face = {
@@ -29,12 +31,12 @@ pub async fn draw_clock() {
     let mut last_time = RTC.lock().await.read_date_time().time();
     loop {
         let time = RTC.lock().await.read_date_time().time();
-        //info!(%time);
 
         if time == last_time {
             sleep(Duration::from_millis(50)).await;
             continue;
         }
+        info!("{}", time);
         // Calculate the position of the three clock hands in radians.
         let hours_radians = hour_to_angle(time.hour());
         let minutes_radians = sexagesimal_to_angle(time.minute());
