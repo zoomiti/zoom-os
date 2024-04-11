@@ -30,7 +30,6 @@ pub mod tracer;
 pub mod util;
 pub mod vga_buffer;
 
-use ::acpi::InterruptModel;
 use acpi::{KERNEL_ACPI_ADDR, KERNEL_ACPI_LEN};
 use allocator::{KERNEL_HEAP_ADDR, KERNEL_HEAP_LEN};
 use apic::{KERNEL_APIC_ADDR, KERNEL_APIC_LEN};
@@ -87,6 +86,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     // I don't really want to support a target with no display
     framebuffer::init(boot_info.framebuffer.as_mut().unwrap());
     let _ = DISPLAY.get().spin_lock().as_mut().clear(Rgb888::BLACK);
+
     tracer::init();
     let init_span = span!(Level::TRACE, "init");
     let _guard = init_span.enter();
@@ -98,7 +98,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     // Unwrapping is okay because if we don't have rsdp we don't know how to boot
     let platform_info = acpi::init(*boot_info.rsdp_addr.as_ref().unwrap());
     trace!("init acpi");
-    if let Ok(InterruptModel::Apic(apic_info)) =
+    if let Ok(::acpi::InterruptModel::Apic(apic_info)) =
         platform_info.as_ref().map(|pi| &pi.interrupt_model)
     {
         apic::init(apic_info).unwrap();
