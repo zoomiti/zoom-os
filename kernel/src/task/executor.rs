@@ -13,24 +13,13 @@ static EXECUTOR: Executor = Executor::new();
 
 pub struct Executor {
     task_queue: SegQueue<TaskId>,
-    task_waker: Mutex<BTreeMap<TaskId, (Task, Waker)>>,
+    spawn_queue: SegQueue<Task>,
+    task_waker_list: Mutex<BTreeMap<TaskId, (Task, Waker)>>,
 }
 
 pub fn spawn(task: impl Into<Task>) {
     let task = task.into();
-    let task_id = task.id;
-    if EXECUTOR
-        .task_waker
-        .spin_lock()
-        .insert(
-            task_id,
-            (task, TaskWaker::new(task_id, &EXECUTOR.task_queue).into()),
-        )
-        .is_some()
-    {
-        panic!("task with same ID already in tasks");
-    }
-    EXECUTOR.task_queue.push(task_id);
+    EXECUTOR.spawn_queue.push(task);
 }
 
 pub fn run() -> ! {
@@ -44,30 +33,43 @@ impl Executor {
     pub const fn new() -> Self {
         Self {
             task_queue: SegQueue::new(),
-            task_waker: Mutex::new(BTreeMap::new()),
+            spawn_queue: SegQueue::new(),
+            task_waker_list: Mutex::new(BTreeMap::new()),
         }
     }
 
-    fn run_ready_tasks(&self) {
+    fn run_ready_tasks(&'static self) {
         let Self {
             task_queue,
-            task_waker,
+            spawn_queue,
+            task_waker_list,
         } = self;
 
+        // get the spawn queue
+        {
+            let mut task_waker = task_waker_list.spin_lock();
+            while let Some(task) = spawn_queue.pop() {
+                let id = task.id;
+                task_waker.insert(task.id, (task, TaskWaker::new(id, task_queue).into()));
+                task_queue.push(id);
+            }
+        }
+
         while let Some(task_id) = task_queue.pop() {
-            let mut task_waker = task_waker.spin_lock();
-            let Some((mut task, waker)) = task_waker.remove(&task_id) else {
+            let mut task_waker = task_waker_list.spin_lock();
+            let Some((task, waker)) = task_waker.get_mut(&task_id) else {
                 debug!(task_id = task_id.0, "Task was woken up more than necessary");
                 continue;
             };
-            drop(task_waker);
 
-            let mut context = Context::from_waker(&waker);
+            let mut context = Context::from_waker(waker);
 
             match task.poll(&mut context) {
-                Poll::Ready(()) => {}
+                Poll::Ready(()) => {
+                    task_waker.remove(&task_id);
+                }
                 Poll::Pending => {
-                    self.task_waker.spin_lock().insert(task_id, (task, waker));
+                    //self.task_waker.spin_lock().insert(task_id, (task, waker));
                 }
             }
         }
