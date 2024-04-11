@@ -5,6 +5,7 @@
 #![feature(allocator_api)]
 #![feature(const_mut_refs)]
 #![feature(error_in_core)]
+#![feature(let_chains)]
 #![test_runner(crate::testing::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
