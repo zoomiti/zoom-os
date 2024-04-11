@@ -19,11 +19,13 @@ use embedded_graphics::{
 };
 use kernel::{
     framebuffer::DISPLAY,
-    keyboard::print_keypresses, println,
+    keyboard::print_keypresses,
+    println,
+    qemu::exit_qemu,
     rtc::RTC,
     task::{run, spawn},
     tracer::SHOULD_USE_SCREEN,
-    util::r#async::{sleep},
+    util::r#async::sleep,
     vga_println, BOOTLOADER_CONFIG,
 };
 use tracing::{error, info, span, Level};
@@ -50,7 +52,7 @@ fn panic(info: &PanicInfo) -> ! {
         );
         let _ = text.draw(disp.as_mut());
     }
-    //exit_qemu(kernel::qemu::QemuExitCode::Failed);
+    exit_qemu(kernel::qemu::QemuExitCode::Failed);
     loop {}
 }
 
@@ -58,9 +60,6 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     kernel::init(boot_info);
-
-    let enabled = x86_64::instructions::interrupts::are_enabled();
-    println!("[INFO] enabled: {}", enabled);
 
     SHOULD_USE_SCREEN.store(false, core::sync::atomic::Ordering::Relaxed);
 
@@ -83,5 +82,6 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     println!("Hello World{}", "!");
     vga_println!("Hello World!");
 
+    drop(_span);
     run()
 }
