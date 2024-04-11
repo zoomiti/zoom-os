@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use thiserror::Error;
-use tracing::instrument;
+use tracing::{instrument, warn};
 use x86_64::instructions::{interrupts, port::Port};
 
 use crate::util::r#async::mutex::IntMutex;
@@ -71,6 +71,7 @@ impl Rtc {
             if let Ok(time) = self.try_read_date_time() {
                 return time;
             }
+            warn!("failed to get time");
             core::hint::spin_loop();
         }
     }
