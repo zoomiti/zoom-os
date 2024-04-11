@@ -2,7 +2,7 @@ use core::sync::atomic::Ordering;
 
 use num_enum::IntoPrimitive;
 use raw_cpuid::{CpuId, Hypervisor};
-use tracing::{error};
+use tracing::error;
 use x86_64::{
     instructions::port::Port,
     structures::idt::{
@@ -24,9 +24,6 @@ use crate::{
 };
 
 pub const INTERRUPT_START: u8 = 32;
-
-//pub static PICS: Mutex<ChainedPics> =
-//   Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 fn notify_end_of_interrupt(index: InterruptIndex) {
     if let Ok(lapic) = LAPIC.try_get() {
@@ -147,7 +144,7 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 }
 
 extern "x86-interrupt" fn clock_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    let curr_time = MONOTONIC_TIME.fetch_add(1, Ordering::Acquire);
+    let curr_time = MONOTONIC_TIME.fetch_add(1, Ordering::AcqRel);
     wake_sleep(curr_time);
     notify_end_of_interrupt(InterruptIndex::Clock);
     RTC.spin_lock().clear_interrup_mask();
