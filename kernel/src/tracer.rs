@@ -1,13 +1,9 @@
 use core::sync::atomic::{AtomicBool, AtomicU64};
 
-use alloc::{
-    borrow::Cow,
-    collections::{BTreeMap, VecDeque},
-    fmt, format,
-};
-use tracing::{field::Visit, info, span, subscriber::set_global_default, Subscriber};
+use alloc::{collections::BTreeMap, fmt, vec::Vec};
+use tracing::{field::Visit, info, span, subscriber::set_global_default, Metadata, Subscriber};
 
-use crate::{print, println, util::r#async::mutex::IntMutex, vga_print, vga_println};
+use crate::{print, println, util::r#async::mutex::Mutex, vga_print, vga_println};
 
 pub fn init() {
     set_global_default(SimpleLogger::default()).expect("Couldn't initialize logging");
@@ -37,13 +33,13 @@ impl Visit for SerialVisitor {
 
 #[derive(Debug, Default)]
 pub struct SimpleLogger {
-    inner: IntMutex<SimpleLoggerInner>,
+    inner: Mutex<SimpleLoggerInner>,
 }
 
 #[derive(Debug, Default)]
 pub struct SimpleLoggerInner {
-    spans: BTreeMap<u64, &'static str>,
-    stack: VecDeque<u64>,
+    spans: BTreeMap<u64, (usize, &'static Metadata<'static>)>,
+    stack: Vec<u64>,
 }
 
 impl Subscriber for SimpleLogger {
@@ -52,12 +48,19 @@ impl Subscriber for SimpleLogger {
     }
 
     fn new_span(&self, _span: &span::Attributes<'_>) -> span::Id {
-        static ID: AtomicU64 = AtomicU64::new(1);
-        let old = ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-
-        let mut inner = self.inner.spin_lock();
-        inner.spans.insert(old, _span.metadata().name());
-        span::Id::from_u64(old)
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            static ID: AtomicU64 = AtomicU64::new(1);
+            let mut inner = self.inner.spin_lock();
+            for (id, (count, span)) in inner.spans.iter_mut() {
+                if _span.metadata() == *span {
+                    *count += 1;
+                    return span::Id::from_u64(*id);
+                }
+            }
+            let old = ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            inner.spans.insert(old, (1, _span.metadata()));
+            span::Id::from_u64(old)
+        })
     }
 
     fn record(&self, _span: &span::Id, _values: &span::Record<'_>) {}
@@ -65,49 +68,64 @@ impl Subscriber for SimpleLogger {
     fn record_follows_from(&self, _span: &span::Id, _follows: &span::Id) {}
 
     fn event(&self, event: &tracing::Event<'_>) {
-        let metadata = event.metadata();
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let metadata = event.metadata();
 
-        let level = metadata.level();
-        let target = metadata.target();
+            let level = metadata.level();
+            let target = metadata.target();
+            let screen = SHOULD_USE_SCREEN.load(core::sync::atomic::Ordering::Relaxed);
 
-        let stack = {
-            let inner = self.inner.spin_lock();
-            let mut stack_iter = inner.stack.iter();
-            let start = stack_iter.next();
-
-            if let Some(start) = start {
-                let start_str = format!(" {}", inner.spans[start]);
-                let mut ret = stack_iter.fold(start_str, |mut s, n| {
-                    s.push_str("::");
-                    s.push_str(inner.spans[n]);
-                    s
-                });
-                ret.push_str(": ");
-                ret.into()
-            } else {
-                Cow::from(": ")
+            print!("[{level}] ");
+            if screen {
+                vga_print!("[{level}] ");
             }
-        };
+            if let Some(inner) = self.inner.try_lock() {
+                let mut stack_iter = inner.stack.iter();
+                let start = stack_iter.next();
 
-        print!("[{level}] {target}{stack}");
-        let screen = SHOULD_USE_SCREEN.load(core::sync::atomic::Ordering::Relaxed);
-        if screen {
-            vga_print!("[{level}] {target}{stack}");
-        }
-        event.record(&mut SerialVisitor);
-        println!();
-        if screen {
-            vga_println!();
-        }
+                if let Some(start) = start {
+                    print!("{}", inner.spans[start].1.name());
+                    if screen {
+                        vga_print!("{}", inner.spans[start].1.name());
+                    }
+                    for n in stack_iter {
+                        print!("::{}", inner.spans[n].1.name());
+                        if screen {
+                            vga_print!("::{}", inner.spans[n].1.name());
+                        }
+                    }
+                    print!(": ");
+                    if screen {
+                        vga_print!(": ");
+                    }
+                }
+            };
+
+            print!("{target}: ");
+            if screen {
+                vga_print!("{target}: ");
+            }
+            event.record(&mut SerialVisitor);
+            println!();
+            if screen {
+                vga_println!();
+            }
+        })
     }
 
     fn enter(&self, span: &span::Id) {
-        let mut inner = self.inner.spin_lock();
-        inner.stack.push_back(span.into_non_zero_u64().into());
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let mut inner = self.inner.spin_lock();
+            inner.stack.push(span.into_non_zero_u64().into());
+        })
     }
 
     fn exit(&self, _span: &span::Id) {
-        let mut inner = self.inner.spin_lock();
-        inner.stack.pop_back();
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let mut inner = self.inner.spin_lock();
+            // FIXME: this technically assumes that all spans are entered and exited in heirarchical
+            // order
+            inner.stack.pop();
+        })
     }
 }
