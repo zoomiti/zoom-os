@@ -738,6 +738,7 @@ dependencies = [
  "smallvec",
  "thiserror-core",
  "tracing",
+ "tracing-core",
  "uart_16550",
  "volatile 0.2.7",
  "x2apic",

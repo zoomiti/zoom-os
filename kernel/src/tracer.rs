@@ -2,6 +2,7 @@ use core::sync::atomic::{AtomicBool, AtomicU64};
 
 use alloc::{collections::BTreeMap, fmt, vec::Vec};
 use tracing::{field::Visit, info, span, subscriber::set_global_default, Metadata, Subscriber};
+use tracing_core::span::Current;
 
 use crate::{print, println, util::r#async::mutex::Mutex, vga_print, vga_println};
 
@@ -126,6 +127,16 @@ impl Subscriber for SimpleLogger {
             // FIXME: this technically assumes that all spans are entered and exited in heirarchical
             // order
             inner.stack.pop();
+        })
+    }
+
+    fn current_span(&self) -> Current {
+        x86_64::instructions::interrupts::without_interrupts(|| {
+            let inner = self.inner.spin_lock();
+            match inner.stack.last() {
+                Some(id) => Current::new(span::Id::from_u64(*id), inner.spans[id].1),
+                None => Current::none(),
+            }
         })
     }
 }

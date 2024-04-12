@@ -20,6 +20,7 @@ pub struct Rtc {
     data: Port<u8>,
 }
 
+#[tracing::instrument(name = "rtc_init")]
 pub fn init() {
     let mut rtc = RTC.spin_lock();
     rtc.set_data_format();
@@ -43,7 +44,7 @@ impl Rtc {
     }
 
     fn enable_interrupts(&mut self) {
-        // Setup Intterupts
+        // Setup Interupts
         // Read cmos
         let prev = self.read_cmos_reg(0x8b);
 

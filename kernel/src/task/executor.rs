@@ -2,7 +2,7 @@ use core::task::{Context, Poll, Waker};
 
 use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use crossbeam_queue::SegQueue;
-use tracing::debug;
+use tracing::warn;
 use x86_64::instructions::interrupts;
 
 use crate::util::r#async::mutex::Mutex;
@@ -58,7 +58,7 @@ impl Executor {
         while let Some(task_id) = task_queue.pop() {
             let mut task_waker = task_waker_list.spin_lock();
             let Some((task, waker)) = task_waker.get_mut(&task_id) else {
-                debug!(task_id = task_id.0, "Task was woken up more than necessary");
+                warn!(task_id = task_id.0, "Task was woken up more than necessary");
                 continue;
             };
 
