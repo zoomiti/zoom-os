@@ -1,10 +1,13 @@
 use core::{f32::consts::PI, time::Duration};
 
+use alloc::format;
 use chrono::Timelike;
 use embedded_graphics::{
+    mono_font::{ascii::FONT_9X15, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Circle, Line, PrimitiveStyle, PrimitiveStyleBuilder},
+    primitives::{Circle, Line, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle},
+    text::Text,
 };
 use libm::{cosf, sinf};
 use tracing::info;
@@ -37,6 +40,14 @@ pub async fn draw_clock() {
             continue;
         }
         info!("{}", time);
+
+        let digital_clock_text = format!(
+            "{:02}:{:02}:{:02}",
+            time.hour(),
+            time.minute(),
+            time.second()
+        );
+
         // Calculate the position of the three clock hands in radians.
         let hours_radians = hour_to_angle(time.hour());
         let minutes_radians = sexagesimal_to_angle(time.minute());
@@ -54,7 +65,11 @@ pub async fn draw_clock() {
             draw_hand(target, &clock_face, seconds_radians, 0, Rgb888::WHITE);
             draw_second_decoration(target, &clock_face, seconds_radians, -20, Rgb888::WHITE);
 
+            draw_digital_clock(target, &clock_face, &digital_clock_text);
+
             center_clock_face.draw(target);
+
+            target.draw_frame();
         }
         sleep(Duration::from_millis(50)).await;
 
@@ -150,4 +165,43 @@ where
     Circle::with_center(decoration_position, 11)
         .into_styled(decoration_style)
         .draw(target)
+}
+
+/// Draw digital clock just above center with black text on a white background
+fn draw_digital_clock<D>(
+    target: &mut D,
+    clock_face: &Circle,
+    time_str: &str,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888>,
+{
+    // Create a styled text object for the time text.
+    let mut text = Text::new(
+        &time_str,
+        Point::zero(),
+        MonoTextStyle::new(&FONT_9X15, Rgb888::BLACK),
+    );
+
+    // Move text to be centered between the 12 o'clock point and the center of the clock face.
+    text.translate_mut(
+        clock_face.center()
+            - text.bounding_box().center()
+            - clock_face.bounding_box().size.y_axis() / 4,
+    );
+
+    // Add a background around the time digits.
+    // Note that there is no bottom-right padding as this is added by the font renderer itself.
+    let text_dimensions = text.bounding_box();
+    Rectangle::new(
+        text_dimensions.top_left - Point::new(3, 3),
+        text_dimensions.size + Size::new(4, 4),
+    )
+    .into_styled(PrimitiveStyle::with_fill(Rgb888::WHITE))
+    .draw(target)?;
+
+    // Draw the text after the background is drawn.
+    text.draw(target)?;
+
+    Ok(())
 }

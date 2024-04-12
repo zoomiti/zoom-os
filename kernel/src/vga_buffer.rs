@@ -136,7 +136,7 @@ pub fn _print(args: fmt::Arguments) {
                 let mut write = writer.spin_lock();
                 write.buffer.replace(display);
                 write.write_fmt(args).unwrap();
-                write.buffer.take();
+                write.buffer.take().unwrap().draw_frame();
             } else {
                 warn!("Tried to write to screen while someone else is\nAre you sure you meant to?");
             }
