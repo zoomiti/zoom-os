@@ -93,7 +93,13 @@ pub struct Display<'f> {
 impl<'f> Display<'f> {
     pub fn new(framebuffer: &'f mut FrameBuffer) -> Display {
         Display {
-            backbuffer: vec![0; framebuffer.buffer().len()].into_boxed_slice(),
+            backbuffer: vec![
+                0;
+                framebuffer.info().width
+                    * framebuffer.info().height
+                    * framebuffer.info().bytes_per_pixel
+            ]
+            .into_boxed_slice(),
             framebuffer,
         }
     }
@@ -121,7 +127,7 @@ impl<'f> Display<'f> {
             // calculate offset to first byte of pixel
             let byte_offset = {
                 // use stride to calculate pixel offset of target line
-                let line_offset = y * info.stride;
+                let line_offset = y * info.width;
                 // add x position to get the absolute pixel offset in buffer
                 let pixel_offset = line_offset + x;
                 // convert to byte offset
@@ -154,9 +160,10 @@ impl<'f> Display<'f> {
     pub fn draw_frame(&mut self) {
         let info = self.get_info();
         for y in 0..info.height {
+            let wide_offset = (y * info.width) * info.bytes_per_pixel;
             let offset = (y * info.stride) * info.bytes_per_pixel;
             unsafe {
-                let wide = self.backbuffer.as_mut_ptr().add(offset);
+                let wide = self.backbuffer.as_mut_ptr().add(wide_offset);
                 let addr = self.framebuffer.buffer_mut().as_mut_ptr().add(offset);
                 core::ptr::copy_nonoverlapping(wide, addr, info.width * info.bytes_per_pixel);
             }
@@ -223,7 +230,7 @@ impl<'f> DrawTarget for Display<'f> {
         let x = range.start as usize;
 
         for y in intersection.rows() {
-            let offset = (y as usize * info.stride + x) * info.bytes_per_pixel;
+            let offset = (y as usize * info.width + x) * info.bytes_per_pixel;
             unsafe {
                 let addr = self.backbuffer.as_mut_ptr().add(offset);
                 core::ptr::copy_nonoverlapping(wide, addr, width * info.bytes_per_pixel);
@@ -262,9 +269,8 @@ impl<'f> DrawTarget for Display<'f> {
             }
             _ => todo!(),
         };
-
         for y in 0..info.height {
-            let offset = (y * info.stride) * info.bytes_per_pixel;
+            let offset = (y * info.width) * info.bytes_per_pixel;
             unsafe {
                 let addr = self.backbuffer.as_mut_ptr().add(offset);
                 core::ptr::copy_nonoverlapping(wide, addr, info.width * info.bytes_per_pixel);
