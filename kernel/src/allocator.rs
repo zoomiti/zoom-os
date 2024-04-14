@@ -1,5 +1,5 @@
 use x86_64::{
-    structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags},
+    structures::paging::{mapper::MapperFlushAll, FrameAllocator, Mapper, Page, PageTableFlags},
     VirtAddr,
 };
 
@@ -27,17 +27,18 @@ static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
         let heap_end_page = Page::containing_address(heap_end);
         heap_start_page..=heap_end_page
     };
-
-    let mut page_alloc = PAGE_ALLOCATOR.get().spin_lock();
-    for page in page_range {
-        let frame = page_alloc.allocate_frame().unwrap();
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe {
-            MAPPER
-                .spin_lock()
-                .map_to(page, frame, flags, &mut *page_alloc)
-                .expect("should not fail")
-                .flush();
+    {
+        let mut page_alloc = PAGE_ALLOCATOR.get().spin_lock();
+        let mut mapper = MAPPER.spin_lock();
+        for page in page_range {
+            let frame = page_alloc.allocate_frame().unwrap();
+            let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
+            unsafe {
+                mapper
+                    .map_to(page, frame, flags, &mut *page_alloc)
+                    .expect("should not fail")
+                    .flush();
+            }
         }
     }
     unsafe {
@@ -49,7 +50,7 @@ static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
 });
 
 pub static KERNEL_HEAP_ADDR: OnceLock<VirtAddr> = OnceLock::new();
-pub const KERNEL_HEAP_LEN: usize = 8 * 1024 * 1024;
+pub const KERNEL_HEAP_LEN: usize = 32 * 1024 * 1024;
 
 fn align_up(addr: usize, align: usize) -> usize {
     (addr + align - 1) & !(align - 1)
