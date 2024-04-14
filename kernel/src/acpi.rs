@@ -1,4 +1,7 @@
-use core::{cell::OnceCell, ptr::NonNull};
+use core::{
+    cell::{OnceCell, RefCell},
+    ptr::NonNull,
+};
 
 use acpi::{AcpiError, AcpiHandler, AcpiTables, PhysicalMapping, PlatformInfo};
 use alloc::{alloc::Global, rc::Rc};
@@ -11,10 +14,7 @@ use x86_64::{
 
 use crate::{
     memory::{MAPPER, PAGE_ALLOCATOR},
-    util::{
-        once::{OnceLock, TryInitError},
-        r#async::mutex::Mutex,
-    },
+    util::once::{OnceLock, TryInitError},
 };
 
 pub static KERNEL_ACPI_ADDR: OnceLock<VirtAddr> = OnceLock::new();
@@ -53,7 +53,7 @@ pub fn init(rsdp: u64) -> Result<PlatformInfo<'static, Global>, AcpiInitError> {
 
 #[derive(Debug, Clone)]
 pub struct KernelAcpi {
-    start_addr: Rc<Mutex<u64>>,
+    start_addr: Rc<RefCell<u64>>,
     end_addr_exclusive: u64,
 }
 
@@ -62,7 +62,7 @@ impl KernelAcpi {
         let start_addr = KERNEL_ACPI_ADDR.get().as_u64();
         let end_addr_exclusive = start_addr + KERNEL_ACPI_LEN as u64 - 1;
         Self {
-            start_addr: Rc::new(Mutex::new(start_addr)),
+            start_addr: Rc::new(RefCell::new(start_addr)),
             end_addr_exclusive,
         }
     }
@@ -81,7 +81,7 @@ impl AcpiHandler for KernelAcpi {
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
         let page_range = {
-            let guard = self.start_addr.spin_lock();
+            let guard = self.start_addr.borrow();
             if *guard + size as u64 >= self.end_addr_exclusive {
                 panic!("acpi memory exhausted");
             }
@@ -95,7 +95,7 @@ impl AcpiHandler for KernelAcpi {
         let virtual_start = OnceCell::new();
         let mut mapper = MAPPER.spin_lock();
         for page in page_range {
-            virtual_start.get_or_init(|| NonNull::new(page.start_address().as_mut_ptr()));
+            let _ = virtual_start.set(NonNull::new(page.start_address().as_mut_ptr()).unwrap());
             let res = mapper
                 .map_to(
                     page,
@@ -108,12 +108,12 @@ impl AcpiHandler for KernelAcpi {
                 )
                 .unwrap();
             res.flush();
-            let mut guard = self.start_addr.spin_lock();
+            let mut guard = self.start_addr.borrow_mut();
             *guard += Size4KiB::SIZE;
         }
         PhysicalMapping::new(
             physical_address,
-            virtual_start.into_inner().unwrap().unwrap(),
+            virtual_start.into_inner().unwrap(),
             size,
             size,
             self.clone(),
@@ -131,7 +131,7 @@ impl AcpiHandler for KernelAcpi {
         };
         for page in page_range {
             MAPPER.spin_lock().unmap(page).unwrap().1.flush();
-            *region.handler().start_addr.spin_lock() -= Size4KiB::SIZE;
+            *region.handler().start_addr.borrow_mut() -= Size4KiB::SIZE;
         }
     }
 }
