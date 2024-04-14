@@ -1,4 +1,10 @@
-use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
+use core::{
+    iter::StepBy,
+    ops::{Coroutine, CoroutineState, Range},
+    pin::Pin,
+};
+
+use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{
@@ -105,9 +111,11 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Opt
     Some(frame.start_address() + u64::from(addr.page_offset()))
 }
 
+// TODO: Allow for frame deallocation
 pub struct BootInfoFrameAllocator {
-    memory_map: &'static MemoryRegions,
-    next: usize,
+    //memory_map: &'static MemoryRegions,
+    memory_map_iter: core::slice::Iter<'static, MemoryRegion>,
+    current_region: Option<StepBy<Range<u64>>>,
 }
 
 impl BootInfoFrameAllocator {
@@ -119,29 +127,56 @@ impl BootInfoFrameAllocator {
     /// as `USABLE` in it are really unused.
     pub unsafe fn init(memory_map: &'static MemoryRegions) -> Self {
         Self {
-            memory_map,
-            next: 0,
+            //memory_map,
+            memory_map_iter: memory_map.iter(),
+            current_region: None,
         }
     }
+}
 
-    /// Returns an iterator over the usable frames specified in the memory map.
-    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
-        // get usable regions from memory map
-        let regions = self.memory_map.iter();
-        let usable_regions = regions.filter(|r| r.kind == MemoryRegionKind::Usable);
-        // map each region to its address range
-        let addr_ranges = usable_regions.map(|r| r.start..r.end);
-        // transform to an iterator of frame start addresses
-        let frame_addresses = addr_ranges.flat_map(|r| r.step_by(4096));
-        // create `PhysFrame` types from the start addresses
-        frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
+impl Coroutine for BootInfoFrameAllocator {
+    type Yield = PhysFrame;
+
+    type Return = ();
+
+    fn resume(
+        mut self: core::pin::Pin<&mut Self>,
+        _arg: (),
+    ) -> core::ops::CoroutineState<Self::Yield, Self::Return> {
+        loop {
+            // If we have a region iterate on it
+            if let Some(range) = self.current_region.as_mut() {
+                // Get the next available frame
+                let Some(next) = range.next() else {
+                    // If we ran out of frame, empty the current region to get a new one
+                    self.current_region = None;
+                    continue;
+                };
+                return CoroutineState::Yielded(PhysFrame::containing_address(PhysAddr::new(next)));
+            } else {
+                'get_region: loop {
+                    let Some(possible_next_range) = self.memory_map_iter.next() else {
+                        // No more memory regions
+                        return CoroutineState::Complete(());
+                    };
+                    if possible_next_range.kind != MemoryRegionKind::Usable {
+                        continue;
+                    }
+                    self.current_region =
+                        // We have found a new region to try iterating from
+                        Some((possible_next_range.start..possible_next_range.end).step_by(4096));
+                    break 'get_region;
+                }
+            }
+        }
     }
 }
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
-        let frame = self.usable_frames().nth(self.next);
-        self.next += 1;
-        frame
+        match Pin::new(self).resume(()) {
+            CoroutineState::Yielded(frame) => Some(frame),
+            CoroutineState::Complete(_) => None,
+        }
     }
 }
