@@ -14,20 +14,24 @@ use tracing::info;
 
 use crate::{framebuffer::DISPLAY, rtc::RTC, util::r#async::sleep};
 
-const MARGIN: u32 = 50;
+const MARGIN: u32 = 10;
 
 #[tracing::instrument]
 #[allow(unused_must_use)]
 pub async fn draw_clock() {
-    let clock_face = {
+    let (clock_face, crop) = {
         let mut disp = DISPLAY.get().lock().await;
         let target = disp.as_mut();
-        let bounding_box = target.bounding_box();
+        let top_left = Point {
+            y: 0,
+            x: target.size().width as i32 - 256,
+        };
+        let crop = Rectangle::new(top_left, Size::new(256, 256));
+        let bounding_box = target.cropped(&crop);
 
-        let diameter = bounding_box.size.width.min(bounding_box.size.height) - 2 * MARGIN;
+        let diameter = bounding_box.size().width.min(bounding_box.size().height) - 2 * MARGIN;
 
-        target.clear(Rgb888::BLACK);
-        Circle::with_center(bounding_box.center(), diameter)
+        (Circle::with_center(Point::new(128, 128), diameter), crop)
     };
     let center_clock_face = Circle::with_center(clock_face.center(), 9)
         .into_styled(PrimitiveStyle::with_fill(Rgb888::WHITE));
@@ -39,7 +43,7 @@ pub async fn draw_clock() {
             sleep(Duration::from_millis(50)).await;
             continue;
         }
-        info!("{}", time);
+        //info!("{}", time);
 
         let digital_clock_text = format!(
             "{:02}:{:02}:{:02}",
@@ -55,7 +59,7 @@ pub async fn draw_clock() {
 
         {
             let mut disp = DISPLAY.get().lock().await;
-            let target = disp.as_mut();
+            let target = &mut disp.cropped(&crop);
             target.clear(Rgb888::BLACK);
 
             draw_face(target, &clock_face);
@@ -69,7 +73,7 @@ pub async fn draw_clock() {
 
             center_clock_face.draw(target);
 
-            target.draw_frame();
+            disp.draw_frame();
         }
         sleep(Duration::from_millis(50)).await;
 
@@ -105,7 +109,7 @@ where
 {
     // Draw the outer face.
     (*clock_face)
-        .into_styled(PrimitiveStyle::with_stroke(Rgb888::BLACK, 2))
+        .into_styled(PrimitiveStyle::with_stroke(Rgb888::WHITE, 2))
         .draw(target)?;
 
     // Draw 12 graduations.
