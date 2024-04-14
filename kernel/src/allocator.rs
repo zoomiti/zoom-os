@@ -1,5 +1,5 @@
 use x86_64::{
-    structures::paging::{mapper::MapperFlushAll, FrameAllocator, Mapper, Page, PageTableFlags},
+    structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB},
     VirtAddr,
 };
 
@@ -23,7 +23,7 @@ static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
     let page_range = {
         let heap_start = *KERNEL_HEAP_ADDR.get();
         let heap_end = heap_start + KERNEL_HEAP_LEN as u64 - 1u64;
-        let heap_start_page = Page::containing_address(heap_start);
+        let heap_start_page = Page::<Size4KiB>::containing_address(heap_start);
         let heap_end_page = Page::containing_address(heap_end);
         heap_start_page..=heap_end_page
     };

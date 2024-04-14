@@ -399,6 +399,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "248e3bacc7dc6baa3b21e405ee045c3047101a49145e7e9eca583ab4c2ca5345"
 
 [[package]]
+name = "either"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a47c1c47d2f5964e29c61246e81db715514cd532db6b5116a25ea3c03d6780a2"
+
+[[package]]
 name = "embedded-graphics"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -714,6 +720,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -729,6 +744,7 @@ dependencies = [
  "crossbeam-queue",
  "embedded-graphics",
  "futures",
+ "itertools",
  "libm",
  "linked_list_allocator",
  "num_enum",
