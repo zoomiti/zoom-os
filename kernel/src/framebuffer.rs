@@ -15,7 +15,7 @@ use x86_64::{
 };
 
 use crate::{
-    memory::MAPPER,
+    memory::mapping::MAPPER,
     util::{once::OnceLock, r#async::mutex::Mutex},
     vga_buffer::{Writer, WRITER},
 };

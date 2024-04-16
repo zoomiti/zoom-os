@@ -13,7 +13,7 @@ use x86_64::{
 };
 
 use crate::{
-    memory::{MAPPER, PAGE_ALLOCATOR},
+    memory::{mapping::MAPPER, PAGE_ALLOCATOR},
     util::once::{OnceLock, TryInitError},
 };
 

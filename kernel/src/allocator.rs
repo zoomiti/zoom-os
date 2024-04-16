@@ -4,11 +4,8 @@ use x86_64::{
 };
 
 use crate::{
-    memory::{MAPPER, PAGE_ALLOCATOR},
-    util::{
-        once::{Lazy, OnceLock},
-        r#async::mutex::Mutex,
-    },
+    memory::mapping::MAPPER,
+    util::{once::OnceLock, r#async::mutex::Mutex},
 };
 
 use self::block::FixedSizeBlockAllocator;
@@ -17,9 +14,9 @@ mod block;
 mod linked_list;
 
 #[global_allocator]
-//static ALLOCATOR: LockedHeap = LockedHeap::empty();
-static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
-    let mut alloc = Mutex::new(FixedSizeBlockAllocator::new());
+static ALLOCATOR: Mutex<FixedSizeBlockAllocator> = Mutex::new(FixedSizeBlockAllocator::new());
+
+pub fn init(page_allocator: &mut impl FrameAllocator<Size4KiB>) {
     let page_range = {
         let heap_start = *KERNEL_HEAP_ADDR.get();
         let heap_end = heap_start + KERNEL_HEAP_LEN as u64 - 1u64;
@@ -28,26 +25,24 @@ static ALLOCATOR: Lazy<Mutex<FixedSizeBlockAllocator>> = Lazy::new(|| {
         heap_start_page..=heap_end_page
     };
     {
-        let mut page_alloc = PAGE_ALLOCATOR.get().spin_lock();
         let mut mapper = MAPPER.spin_lock();
         for page in page_range {
-            let frame = page_alloc.allocate_frame().unwrap();
+            let frame = page_allocator.allocate_frame().unwrap();
             let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
             unsafe {
                 mapper
-                    .map_to(page, frame, flags, &mut *page_alloc)
+                    .map_to(page, frame, flags, &mut *page_allocator)
                     .expect("should not fail")
                     .flush();
             }
         }
     }
     unsafe {
-        alloc
-            .get_mut()
+        ALLOCATOR
+            .spin_lock()
             .init(KERNEL_HEAP_ADDR.get().as_mut_ptr(), KERNEL_HEAP_LEN);
     }
-    alloc
-});
+}
 
 pub static KERNEL_HEAP_ADDR: OnceLock<VirtAddr> = OnceLock::new();
 pub const KERNEL_HEAP_LEN: usize = 32 * 1024 * 1024;

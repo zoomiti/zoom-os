@@ -14,7 +14,7 @@ use x86_64::{
 
 use crate::{
     interrupts::InterruptIndex,
-    memory::{MAPPER, PAGE_ALLOCATOR},
+    memory::{mapping::MAPPER, PAGE_ALLOCATOR},
     pic::PICS,
     util::{
         once::{OnceLock, TryInitError},

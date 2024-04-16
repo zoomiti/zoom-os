@@ -5,7 +5,7 @@
 #![feature(allocator_api)]
 #![feature(const_mut_refs)]
 #![feature(error_in_core)]
-#![feature(coroutines, coroutine_trait)]
+//#![feature(coroutines, coroutine_trait)]
 #![feature(let_chains)]
 #![test_runner(crate::testing::test_runner)]
 #![reexport_test_harness_main = "test_main"]
@@ -38,14 +38,13 @@ use apic::{KERNEL_APIC_ADDR, KERNEL_APIC_LEN};
 use bootloader_api::entry_point;
 use bootloader_api::{config::Mapping, BootInfo, BootloaderConfig};
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
+use framebuffer::DISPLAY;
 use tracing::{span, trace, Level};
 use util::once::OnceLock;
 use x86_64::{
     structures::paging::{Page, Size4KiB},
     VirtAddr,
 };
-
-use crate::framebuffer::DISPLAY;
 
 pub static PHYS_OFFSET: OnceLock<u64> = OnceLock::new();
 
@@ -62,7 +61,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     let kernel_acpi_len = KERNEL_ACPI_LEN;
     let kernel_apic_addr =
         (kernel_acpi_addr + kernel_acpi_len as u64).align_up(Page::<Size4KiB>::SIZE);
-    let _kernel_apic_len = KERNEL_APIC_LEN;
+    let kernel_apic_len = KERNEL_APIC_LEN;
 
     let phys_offset = boot_info.physical_memory_offset.into_option().unwrap();
 
@@ -73,7 +72,7 @@ pub fn init(boot_info: &'static mut BootInfo) {
     println!("kernel_acpi_addr: {:p}", kernel_acpi_addr);
     println!("kernel_acpi_len: {:#x}", kernel_acpi_len);
     println!("kernel_apic_addr: {:p}", kernel_apic_addr);
-    println!("kernel_apic_len: {:#x}", _kernel_apic_len);
+    println!("kernel_apic_len: {:#x}", kernel_apic_len);
 
     KERNEL_CODE_ADDR.init_once(|| kernel_code_addr);
     KERNEL_CODE_LEN.init_once(|| kernel_code_len as usize);
